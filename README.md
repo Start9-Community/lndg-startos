@@ -38,10 +38,10 @@ basic maintenance tasks.
 
 | Property | Value |
 |----------|-------|
-| Image | `ghcr.io/cryptosharks131/lndg:v1.10.1` (unmodified) |
+| Image | `ghcr.io/cryptosharks131/lndg` (unmodified) |
 | Architectures | x86_64, aarch64 |
 | Upstream WORKDIR | `/app` (cloned lndg repo) |
-| Runtime | Python 3 / Django + Django REST Framework |
+| Runtime | Python / Django + Django REST Framework |
 
 ---
 
@@ -152,7 +152,7 @@ start so interface add/remove propagates via the reactive hostname read.
 
 | Dependency | Required | Purpose |
 |------------|----------|---------|
-| LND (`>=0.17.0`) | Required | Lightning node to manage and automate |
+| LND | Required | Lightning node to manage and automate |
 
 LNDg reads LND's TLS cert directly from the read-only dependency mount
 (`/mnt/lnd/tls.cert`) and reads the admin macaroon from its own local copy
@@ -214,9 +214,9 @@ and static file collection to complete after a fresh container rebuild.
    The action generates the password, persists it, and reveals it in the
    same response. Use the same action to reset the password later.
 4. **Single-network: mainnet only.** `initialize.py` is invoked with
-   `-net mainnet`, matching the behavior of the 0.3.5.1 package.
-5. **Legacy `config.yaml` / `stats.yaml` files are gone.** The 0.3.5.1
-   package used them for StartOS config/properties; in 0.4 these are
+   `-net mainnet`, matching the behavior of the legacy package.
+5. **Legacy `config.yaml` / `stats.yaml` files are gone.** The legacy
+   package used them for StartOS config/properties; they are now
    replaced by `store.json` and the **Admin Credentials** action.
 
 ---
@@ -235,7 +235,7 @@ and static file collection to complete after a fresh container rebuild.
 
 ```yaml
 package_id: lndg
-image: ghcr.io/cryptosharks131/lndg:v1.10.1
+image: ghcr.io/cryptosharks131/lndg
 architectures: [x86_64, aarch64]
 volumes:
   main: /data
@@ -244,7 +244,7 @@ dependency_mounts:
 ports:
   ui: 8889
 dependencies:
-  lnd (required, >=0.17.0)
+  lnd (required)
 actions:
   - reset-admin-credentials
 health_checks:

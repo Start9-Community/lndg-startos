@@ -2,7 +2,6 @@ import { FileHelper, z } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 
 const shape = z.object({
-  adminUsername: z.string().catch('lndg-admin'),
   adminPassword: z.string().optional().catch(undefined),
 })
 

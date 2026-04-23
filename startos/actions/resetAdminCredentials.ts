@@ -22,7 +22,7 @@ export const resetAdminCredentials = sdk.Action.withoutInput(
         ? i18n('Reset your LNDg admin password')
         : i18n('Create your LNDg admin password'),
       warning: null,
-      allowedStatuses: 'only-stopped',
+      allowedStatuses: 'any',
       group: null,
       visibility: 'enabled',
     }
@@ -35,7 +35,7 @@ export const resetAdminCredentials = sdk.Action.withoutInput(
       len: 22,
     })
 
-    await storeJson.merge(effects, { adminUsername, adminPassword })
+    await storeJson.merge(effects, { adminPassword })
 
     return {
       version: '1',

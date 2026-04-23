@@ -32,24 +32,9 @@ export const lndRpcPort = 10009
 
 export const adminUsername = 'lndg-admin' as const
 
-/**
- * StartOS-specific overrides appended to the upstream-canonical settings.py.
- *
- * Python processes top-to-bottom and later assignments win, so every name
- * here silently overrides whatever upstream emitted. This is the whole point
- * of the base+overrides pattern: we never touch upstream's content, we just
- * append ours.
- *
- * Only fields StartOS actually needs to override belong here. Anything
- * upstream owns (MIDDLEWARE, INSTALLED_APPS, AUTH_PASSWORD_VALIDATORS,
- * LOGIN_REQUIRED, SESSION_COOKIE_AGE, REST_FRAMEWORK, SECRET_KEY, ...)
- * flows through from base-settings.py untouched.
- *
- * Notably NOT overridden:
- *   - SECRET_KEY — upstream's `initialize.write_settings` generates a
- *     random 64-char value into base-settings.py. It's server-side crypto
- *     (session signing, password-reset tokens); unrelated to adminPassword.
- */
+// StartOS overrides appended to upstream's settings.py. Python's
+// last-assignment-wins lets us shadow upstream defaults without editing
+// the base file.
 export function composeOverrides(opts: {
   allowedHosts: string[]
   csrfOrigins: string[]
@@ -61,11 +46,9 @@ export function composeOverrides(opts: {
   return `# --- StartOS overrides (appended at daemon start) ---
 ALLOWED_HOSTS = [${hostsList}]
 CSRF_TRUSTED_ORIGINS = [${originsList}]
-# StartOS terminates TLS at a reverse proxy on the internal 10.0.3.0/24
-# network and forwards HTTP to this service. Trust the forwarded scheme
-# header so Django's calculated origin matches the browser's Origin header
-# — without this, HTTPS-at-browser / HTTP-at-Django produces a CSRF Origin
-# mismatch and every login POST 403s. Analogue of nextcloud's trusted_proxies.
+# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
+# calculated origin matches the browser's — otherwise login POSTs 403 on
+# CSRF origin mismatch.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
 CORS_ALLOW_CREDENTIALS = True
