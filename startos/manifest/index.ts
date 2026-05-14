@@ -9,7 +9,6 @@ export const manifest = setupManifest({
   upstreamRepo: 'https://github.com/cryptosharks131/lndg',
   marketingUrl: 'https://x.com/cryptosharks131',
   donationUrl: null,
-  docsUrls: ['https://github.com/cryptosharks131/lndg#readme'],
   description: { short, long },
   volumes: ['main'],
   images: {
