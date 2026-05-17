@@ -5,7 +5,7 @@ export const manifest = setupManifest({
   id: 'lndg',
   title: 'LNDg',
   license: 'MIT',
-  packageRepo: 'https://github.com/islandbitcoin/lndg-startos',
+  packageRepo: 'https://github.com/Start9-Community/lndg-startos',
   upstreamRepo: 'https://github.com/cryptosharks131/lndg',
   marketingUrl: 'https://x.com/cryptosharks131',
   donationUrl: null,
