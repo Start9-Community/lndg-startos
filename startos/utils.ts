@@ -26,9 +26,11 @@ export const settingsPath = `${appDir}/lndg/settings.py` as const
 // Written once per install/upgrade by `init/bootstrapSettings.ts`.
 export const baseSettingsFilename = 'base-settings.py' as const
 
-// LND gRPC endpoint (resolved over StartOS internal DNS)
-export const lndRpcHost = 'lnd.startos' as const
-export const lndRpcPort = 10009
+// Placeholder LND gRPC endpoint baked into base-settings.py by init. The live
+// endpoint is LND's gRPC address over the LXC bridge, resolved reactively at
+// daemon start (main.ts) and appended to the settings overrides, which shadows
+// this value via Python's last-assignment-wins.
+export const lndRpcPlaceholder = '127.0.0.1:10009' as const
 
 export const adminUsername = 'lndg-admin' as const
 
@@ -38,6 +40,7 @@ export const adminUsername = 'lndg-admin' as const
 export function composeOverrides(opts: {
   allowedHosts: string[]
   csrfOrigins: string[]
+  lndRpcServer: string
 }): string {
   const quote = (s: string) => `'${s.replace(/'/g, "\\'")}'`
   const hostsList = opts.allowedHosts.map(quote).join(', ')
@@ -46,6 +49,7 @@ export function composeOverrides(opts: {
   return `# --- StartOS overrides (appended at daemon start) ---
 ALLOWED_HOSTS = [${hostsList}]
 CSRF_TRUSTED_ORIGINS = [${originsList}]
+LND_RPC_SERVER = ${quote(opts.lndRpcServer)}
 # StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
 # calculated origin matches the browser's — otherwise login POSTs 403 on
 # CSRF origin mismatch.

@@ -4,8 +4,7 @@ import {
   baseSettingsFilename,
   dataDir,
   lndMount,
-  lndRpcHost,
-  lndRpcPort,
+  lndRpcPlaceholder,
   settingsPath,
 } from '../utils'
 
@@ -44,7 +43,7 @@ write_settings(
     lnd_macaroon_path='${lndMount}/data/chain/bitcoin/mainnet/admin.macaroon',
     lnd_database_path='${lndMount}/data/graph/mainnet/channel.db',
     lnd_network='mainnet',
-    lnd_rpc_server='${lndRpcHost}:${lndRpcPort}',
+    lnd_rpc_server='${lndRpcPlaceholder}',
     lnd_max_message='35',
     whitenoise=True,
     debug=False,
