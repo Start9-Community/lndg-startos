@@ -11,7 +11,6 @@ import {
   composeOverrides,
   dataDir,
   lndMount,
-  lndRpcPlaceholder,
   settingsPath,
   uiPort,
 } from './utils'
@@ -76,16 +75,17 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // main restarts exactly on LND install/uninstall/port-change — never on LND
   // updates or lock/unlock cycles (the binding entry and assignedPort persist
   // across those). LND's `grpc` binding is published only after the first
-  // wallet unlock, so this resolves null until then; we write the loopback
-  // placeholder in the meantime and the .const() heals on unlock (one
-  // restart). LND's StartOS-issued cert covers the bridge address, verified
-  // against the tls.cert read off the read-only LND mount.
-  const lndRpcServer =
-    (await bridgeAddress(effects, {
-      packageId: 'lnd',
-      hostId: gRPCHostId,
-      internalPort: gRPCPort,
-    }).const()) ?? lndRpcPlaceholder
+  // wallet unlock, so this resolves null until then; while null we omit the
+  // LND_RPC_SERVER override (composeOverrides), leaving the base-settings
+  // placeholder active so the gRPC dial fails into a red health check, and the
+  // .const() heals on unlock (one restart). LND's StartOS-issued cert covers
+  // the bridge address, verified against the tls.cert read off the read-only
+  // LND mount.
+  const lndRpcServer = await bridgeAddress(effects, {
+    packageId: 'lnd',
+    hostId: gRPCHostId,
+    internalPort: gRPCPort,
+  }).const()
 
   const adminPassword = await storeJson
     .read((s) => s.adminPassword)

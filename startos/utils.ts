@@ -42,7 +42,8 @@ export function bridgeAddress(
         const port =
           host?.bindings[opts.internalPort]?.net.assignedPort ??
           opts.fallbackPort
-        return port != null ? `${osIp}:${port}` : null
+        if (port == null) return null
+        return `${osIp}:${port}`
       },
     )
   }
@@ -94,17 +95,23 @@ export const adminUsername = 'lndg-admin' as const
 export function composeOverrides(opts: {
   allowedHosts: string[]
   csrfOrigins: string[]
-  lndRpcServer: string
+  lndRpcServer: string | null
 }): string {
   const quote = (s: string) => `'${s.replace(/'/g, "\\'")}'`
   const hostsList = opts.allowedHosts.map(quote).join(', ')
   const originsList = opts.csrfOrigins.map(quote).join(', ')
+  // Omit the override entirely when LND's gRPC address is unresolved so we
+  // never write a placeholder that pretends to be LND. The base-settings.py
+  // seed stays active (dial fails, health check red) until the .const() heals.
+  const lndRpc =
+    opts.lndRpcServer != null
+      ? `LND_RPC_SERVER = ${quote(opts.lndRpcServer)}\n`
+      : ''
 
   return `# --- StartOS overrides (appended at daemon start) ---
 ALLOWED_HOSTS = [${hostsList}]
 CSRF_TRUSTED_ORIGINS = [${originsList}]
-LND_RPC_SERVER = ${quote(opts.lndRpcServer)}
-# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
+${lndRpc}# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
 # calculated origin matches the browser's — otherwise login POSTs 403 on
 # CSRF origin mismatch.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
