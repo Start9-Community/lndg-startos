@@ -1,3 +1,4 @@
+import { gRPCHostId, gRPCPort } from 'lnd-startos/startos/interfaces'
 import { baseSettingsPy } from './fileModels/base-settings.py'
 import { storeJson } from './fileModels/store.json'
 import { i18n } from './i18n'
@@ -6,9 +7,11 @@ import { sdk } from './sdk'
 import {
   adminUsername,
   appDir,
+  bridgeAddress,
   composeOverrides,
   dataDir,
   lndMount,
+  lndRpcPlaceholder,
   settingsPath,
   uiPort,
 } from './utils'
@@ -67,31 +70,22 @@ export const main = sdk.setupMain(async ({ effects }) => {
     ]),
   )
 
-  // LND's gRPC over the LXC bridge (replaces `lnd.startos:10009`). LND's
-  // StartOS-issued cert now covers the bridge address, so we connect there and
-  // verify against the tls.cert read off the read-only LND mount. Host id and
-  // interface id 'grpc' are LND's (lnd-startos/startos/interfaces).
-  const lndRpcServer = await sdk.host
-    .get(effects, { hostId: 'grpc', packageId: 'lnd' }, (host) => {
-      const iface =
-        host &&
-        Object.values(host.bindings)
-          .flatMap((b) => Object.values(b.interfaces))
-          .find((i) => i.id === 'grpc')
-      const h =
-        iface &&
-        iface.addressInfo.filter({
-          kind: 'bridge',
-          predicate: (h) => h.ssl && h.metadata.kind === 'ipv4',
-        }).hostnames[0]
-      return h ? `${h.hostname}:${h.port}` : undefined
-    })
-    .const()
-  if (!lndRpcServer) {
-    throw new Error(
-      'LND is not yet reachable on the internal network. Ensure LND is installed, started, and healthy.',
-    )
-  }
+  // LND's gRPC over the LXC bridge (replaces `lnd.startos:10009`). Resolved
+  // reactively through the shared bridgeAddress helper against LND's `grpc`
+  // host: the mapped value only changes when LND's assigned gRPC port does, so
+  // main restarts exactly on LND install/uninstall/port-change — never on LND
+  // updates or lock/unlock cycles (the binding entry and assignedPort persist
+  // across those). LND's `grpc` binding is published only after the first
+  // wallet unlock, so this resolves null until then; we write the loopback
+  // placeholder in the meantime and the .const() heals on unlock (one
+  // restart). LND's StartOS-issued cert covers the bridge address, verified
+  // against the tls.cert read off the read-only LND mount.
+  const lndRpcServer =
+    (await bridgeAddress(effects, {
+      packageId: 'lnd',
+      hostId: gRPCHostId,
+      internalPort: gRPCPort,
+    }).const()) ?? lndRpcPlaceholder
 
   const adminPassword = await storeJson
     .read((s) => s.adminPassword)

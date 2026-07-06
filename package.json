@@ -6,7 +6,8 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@start9labs/start-sdk": "2.0.1"
+    "@start9labs/start-sdk": "2.0.1",
+    "lnd-startos": "github:Start9Labs/lnd-startos#next"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
