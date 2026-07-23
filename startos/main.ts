@@ -1,10 +1,13 @@
+import { gRPCHostId, gRPCPort } from 'lnd-startos/startos/interfaces'
 import { baseSettingsPy } from './fileModels/base-settings.py'
 import { storeJson } from './fileModels/store.json'
 import { i18n } from './i18n'
+import { uiHostId, uiInterfaceId } from './interfaces'
 import { sdk } from './sdk'
 import {
   adminUsername,
   appDir,
+  bridgeAddress,
   composeOverrides,
   dataDir,
   lndMount,
@@ -34,23 +37,55 @@ u.save()
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting LNDg...'))
 
-  const hostnames =
-    (await sdk.serviceInterface
-      .getOwn(effects, 'ui', (i) =>
-        i?.addressInfo?.format('hostname-info').map((h) => h.hostname),
-      )
-      .const()) || []
+  // Browser-facing hostnames of the UI interface, for ALLOWED_HOSTS / CSRF.
+  // Exclude the LXC bridge and link-local addresses (neither is reached from a
+  // browser) and bracket IPv6 so it composes into a valid host / origin.
+  const hostnameInfo =
+    (await sdk.host
+      .getOwn(effects, uiHostId, (host) => {
+        const ui =
+          host &&
+          Object.values(host.bindings)
+            .flatMap((b) => Object.values(b.interfaces))
+            .find((i) => i.id === uiInterfaceId)
+        return ui
+          ? ui.addressInfo
+              .filter({ exclude: { kind: ['link-local', 'bridge'] } })
+              .format('hostname-info')
+          : []
+      })
+      .const()) ?? []
+  const hostnames = hostnameInfo.map((h) =>
+    h.metadata.kind === 'ipv6' ? `[${h.hostname}]` : h.hostname,
+  )
 
   const allowedHosts = Array.from(
-    new Set(['localhost', '127.0.0.1', 'lndg.startos', ...hostnames]),
+    new Set(['localhost', '127.0.0.1', ...hostnames]),
   )
   const csrfOrigins = Array.from(
     new Set([
-      'https://lndg.startos',
       ...hostnames.map((h) => `https://${h}`),
       ...hostnames.map((h) => `http://${h}`),
     ]),
   )
+
+  // LND's gRPC over the LXC bridge (replaces `lnd.startos:10009`). Resolved
+  // reactively through the shared bridgeAddress helper against LND's `grpc`
+  // host: the mapped value only changes when LND's assigned gRPC port does, so
+  // main restarts exactly on LND install/uninstall/port-change — never on LND
+  // updates or lock/unlock cycles (the binding entry and assignedPort persist
+  // across those). LND's `grpc` binding is published only after the first
+  // wallet unlock, so this resolves null until then; while null we omit the
+  // LND_RPC_SERVER override (composeOverrides), leaving the base-settings
+  // placeholder active so the gRPC dial fails into a red health check, and the
+  // .const() heals on unlock (one restart). LND's StartOS-issued cert covers
+  // the bridge address, verified against the tls.cert read off the read-only
+  // LND mount.
+  const lndRpcServer = await bridgeAddress(effects, {
+    packageId: 'lnd',
+    hostId: gRPCHostId,
+    internalPort: gRPCPort,
+  }).const()
 
   const adminPassword = await storeJson
     .read((s) => s.adminPassword)
@@ -61,7 +96,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
     throw new Error('No base-settings.py')
   }
 
-  const appSub = await sdk.SubContainer.of(
+  const appSub = sdk.SubContainer.of(
     effects,
     { imageId: 'lndg' },
     sdk.Mounts.of()
@@ -87,7 +122,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
     settingsPath,
     baseSettings +
       '\n' +
-      composeOverrides({ allowedHosts, csrfOrigins }) +
+      composeOverrides({ allowedHosts, csrfOrigins, lndRpcServer }) +
       '\n',
   )
 

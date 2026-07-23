@@ -1,3 +1,58 @@
+import { T } from '@start9labs/start-sdk'
+import { sdk } from './sdk'
+
+/**
+ * Bridge address (`10.0.3.1:<assigned external port>`) of a dependency's
+ * binding, as a minimal reactive value. Chain `.const()` in main: the mapped
+ * string only changes when the address itself does, so main restarts exactly
+ * on dependency install/uninstall/port-change and never on dependency
+ * updates. Chain `.once()` in an action context. `fallbackPort` keeps the
+ * value non-null while the dependency is absent — sanctioned only for tor's
+ * allocator-guaranteed SOCKS 9050. Drop-in for the planned SDK
+ * `sdk.host.getBridgeAddress` helper.
+ */
+export function bridgeAddress(
+  effects: T.Effects,
+  opts: {
+    packageId: string
+    hostId: string
+    internalPort: number
+    fallbackPort: number
+  },
+): { const(): Promise<string>; once(): Promise<string> }
+export function bridgeAddress(
+  effects: T.Effects,
+  opts: { packageId: string; hostId: string; internalPort: number },
+): { const(): Promise<string | null>; once(): Promise<string | null> }
+export function bridgeAddress(
+  effects: T.Effects,
+  opts: {
+    packageId: string
+    hostId: string
+    internalPort: number
+    fallbackPort?: number
+  },
+) {
+  const watchable = async () => {
+    const osIp = await sdk.getOsIp(effects)
+    return sdk.host.get(
+      effects,
+      { packageId: opts.packageId, hostId: opts.hostId },
+      (host) => {
+        const port =
+          host?.bindings[opts.internalPort]?.net.assignedPort ??
+          opts.fallbackPort
+        if (port == null) return null
+        return `${osIp}:${port}`
+      },
+    )
+  }
+  return {
+    const: async () => (await watchable()).const(),
+    once: async () => (await watchable()).once(),
+  }
+}
+
 export const uiPort = 8889
 
 // Path inside the subcontainer where the upstream lndg repo lives (WORKDIR of the image)
@@ -26,9 +81,11 @@ export const settingsPath = `${appDir}/lndg/settings.py` as const
 // Written once per install/upgrade by `init/bootstrapSettings.ts`.
 export const baseSettingsFilename = 'base-settings.py' as const
 
-// LND gRPC endpoint (resolved over StartOS internal DNS)
-export const lndRpcHost = 'lnd.startos' as const
-export const lndRpcPort = 10009
+// Placeholder LND gRPC endpoint baked into base-settings.py by init. The live
+// endpoint is LND's gRPC address over the LXC bridge, resolved reactively at
+// daemon start (main.ts) and appended to the settings overrides, which shadows
+// this value via Python's last-assignment-wins.
+export const lndRpcPlaceholder = '127.0.0.1:10009' as const
 
 export const adminUsername = 'lndg-admin' as const
 
@@ -38,15 +95,23 @@ export const adminUsername = 'lndg-admin' as const
 export function composeOverrides(opts: {
   allowedHosts: string[]
   csrfOrigins: string[]
+  lndRpcServer: string | null
 }): string {
   const quote = (s: string) => `'${s.replace(/'/g, "\\'")}'`
   const hostsList = opts.allowedHosts.map(quote).join(', ')
   const originsList = opts.csrfOrigins.map(quote).join(', ')
+  // Omit the override entirely when LND's gRPC address is unresolved so we
+  // never write a placeholder that pretends to be LND. The base-settings.py
+  // seed stays active (dial fails, health check red) until the .const() heals.
+  const lndRpc =
+    opts.lndRpcServer != null
+      ? `LND_RPC_SERVER = ${quote(opts.lndRpcServer)}\n`
+      : ''
 
   return `# --- StartOS overrides (appended at daemon start) ---
 ALLOWED_HOSTS = [${hostsList}]
 CSRF_TRUSTED_ORIGINS = [${originsList}]
-# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
+${lndRpc}# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
 # calculated origin matches the browser's — otherwise login POSTs 403 on
 # CSRF origin mismatch.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
