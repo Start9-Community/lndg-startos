@@ -2,12 +2,11 @@ export const short = {
   en_US: 'Web UI and auto-rebalancer for LND routing node operators',
   es_ES:
     'Interfaz web y auto-rebalanceador para operadores de nodos de enrutamiento LND',
-  de_DE:
-    'Web-Oberfläche und Auto-Rebalancer für LND-Routing-Knotenbetreiber',
+  de_DE: 'Web-Oberfläche und Auto-Rebalancer für LND-Routing-Knotenbetreiber',
   pl_PL:
     'Interfejs webowy i automatyczny rebalanser dla operatorów węzłów routingu LND',
   fr_FR:
-    "Interface web et auto-rééquilibreur pour les opérateurs de nœuds de routage LND",
+    'Interface web et auto-rééquilibreur pour les opérateurs de nœuds de routage LND',
 }
 
 export const long = {
@@ -30,5 +29,3 @@ export const depLndDescription = {
   pl_PL: 'Używane do komunikacji z siecią Lightning',
   fr_FR: 'Utilisé pour communiquer avec le réseau Lightning',
 }
-
-
