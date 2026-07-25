@@ -69,11 +69,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
   )
 
   // LND's gRPC over the LXC bridge (replaces `lnd.startos:10009`). Resolved
-  // reactively through the shared bridgeAddress helper against LND's `grpc`
-  // host: the mapped value only changes when LND's assigned gRPC port does, so
-  // main restarts exactly on LND install/uninstall/port-change — never on LND
-  // updates or lock/unlock cycles (the binding entry and assignedPort persist
-  // across those). LND's `grpc` binding is published only after the first
+  // reactively with `sdk.host.getBridgeAddress` against LND's `grpc` host: the
+  // bridge address only changes when LND's gRPC binding does, so main restarts
+  // exactly on LND install/uninstall/port-change — never on LND updates or
+  // lock/unlock cycles (the binding persists across those). LND's `grpc` binding is published only after the first
   // wallet unlock, so this resolves null until then; while null we omit the
   // LND_RPC_SERVER override (composeOverrides), leaving the base-settings
   // placeholder active so the gRPC dial fails into a red health check, and the
