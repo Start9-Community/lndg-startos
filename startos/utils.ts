@@ -1,5 +1,3 @@
-import { sdk } from './sdk'
-
 export const uiPort = 8889
 
 // Path inside the subcontainer where the upstream lndg repo lives (WORKDIR of the image)
