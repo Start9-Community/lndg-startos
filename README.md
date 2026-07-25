@@ -54,7 +54,7 @@ basic maintenance tasks.
 
 **Key paths on the `main` volume:**
 
-- `store.json` — admin username and password (StartOS-managed)
+- `store.json` — admin password (StartOS-managed)
 - `db.sqlite3` — LNDg Django sqlite database
 - `base-settings.py` — upstream-canonical Django settings (seeded per install/upgrade; used as the base layer when composing the subcontainer's `settings.py` at start)
 
@@ -87,9 +87,8 @@ basic maintenance tasks.
    generated.
 5. Open the web UI and log in as `lndg-admin` with the retrieved password.
 6. If you ever forget the password, run the **Admin Credentials** action
-   again while the service is stopped — it resets the password and
-   reveals the new value. The Django superuser gets re-synced on the next
-   start.
+   again at any time — it resets the password and reveals the new value.
+   The Django superuser gets re-synced on the next start.
 
 ---
 
@@ -99,8 +98,9 @@ basic maintenance tasks.
 
 | Field           | Default                                                                   | Purpose                                                                                                                                                                 |
 | --------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adminUsername` | `lndg-admin`                                                              | Django superuser name                                                                                                                                                   |
 | `adminPassword` | Unset initially — generated on-demand by the **Admin Credentials** action | Django superuser password. Whenever this field is missing, a critical task appears prompting the user to create (first run) or reset (subsequent runs) the credentials. |
+
+The username is the fixed constant `lndg-admin` (`startos/utils.ts`), not a stored field.
 
 ### settings.py (base + overrides)
 
@@ -155,18 +155,18 @@ start so interface add/remove propagates via the reactive hostname read.
 | ---------- | -------- | ------------------------------------- |
 | LND        | Required | Lightning node to manage and automate |
 
-LNDg reads LND's TLS cert directly from the read-only dependency mount
-(`/mnt/lnd/tls.cert`) and reads the admin macaroon from its own local copy
-on the `main` volume (`/data/macaroons/.../admin.macaroon`), refreshed on
-every startup.
+LNDg reads LND's TLS cert and admin macaroon directly from the read-only
+dependency mount (`/mnt/lnd/tls.cert` and
+`/mnt/lnd/data/chain/bitcoin/mainnet/admin.macaroon`); no copy is kept on
+the LNDg volume.
 
 ---
 
 ## Actions
 
-| Action                                        | Purpose                                                                                                                                                   |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin Credentials (`reset-admin-credentials`) | Create (first run) or reset (subsequent runs) the LNDg admin password. Reveals the username and new password. Only runnable while the service is stopped. |
+| Action                                        | Purpose                                                                                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin Credentials (`reset-admin-credentials`) | Create (first run) or reset (subsequent runs) the LNDg admin password. Reveals the username and new password. Runnable in any service state; the Django superuser is re-synced on the next start. |
 
 ---
 
@@ -214,8 +214,10 @@ and static file collection to complete after a fresh container rebuild.
    triggers a critical task pointing at the **Admin Credentials** action.
    The action generates the password, persists it, and reveals it in the
    same response. Use the same action to reset the password later.
-4. **Single-network: mainnet only.** `initialize.py` is invoked with
-   `-net mainnet`, matching the behavior of the legacy package.
+4. **Single-network: mainnet only.** `init/bootstrapSettings.ts` calls
+   `initialize.write_settings(..., lnd_network='mainnet', ...)`, and the
+   macaroon and `channel.db` paths hardcode `mainnet`, matching the
+   behavior of the legacy package.
 5. **Legacy `config.yaml` / `stats.yaml` files are gone.** The legacy
    package used them for StartOS config/properties; they are now
    replaced by `store.json` and the **Admin Credentials** action.
