@@ -64,7 +64,7 @@ export default {
     8: 'Réinitialiser les identifiants administrateur',
     9: 'Créez votre mot de passe administrateur LNDg',
     10: 'Réinitialisez votre mot de passe administrateur LNDg',
-    11: "Vos identifiants administrateur LNDg sont ci-dessous. Notez-les ou enregistrez-les dans un gestionnaire de mots de passe — toute personne disposant de ces identifiants peut contrôler votre nœud LND via LNDg.",
+    11: 'Vos identifiants administrateur LNDg sont ci-dessous. Notez-les ou enregistrez-les dans un gestionnaire de mots de passe — toute personne disposant de ces identifiants peut contrôler votre nœud LND via LNDg.',
     12: 'Succès',
     13: "Nom d'utilisateur",
     14: 'Mot de passe',

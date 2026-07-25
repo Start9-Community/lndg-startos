@@ -7,7 +7,6 @@ import { sdk } from './sdk'
 import {
   adminUsername,
   appDir,
-  bridgeAddress,
   composeOverrides,
   dataDir,
   lndMount,
@@ -81,11 +80,13 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // .const() heals on unlock (one restart). LND's StartOS-issued cert covers
   // the bridge address, verified against the tls.cert read off the read-only
   // LND mount.
-  const lndRpcServer = await bridgeAddress(effects, {
-    packageId: 'lnd',
-    hostId: gRPCHostId,
-    internalPort: gRPCPort,
-  }).const()
+  const lndRpcServer = await sdk.host
+    .getBridgeAddress(effects, {
+      packageId: 'lnd',
+      hostId: gRPCHostId,
+      internalPort: gRPCPort,
+    })
+    .const()
 
   const adminPassword = await storeJson
     .read((s) => s.adminPassword)

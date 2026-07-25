@@ -17,8 +17,7 @@ const dict = {
   'Reset Admin Credentials': 8,
   'Create your LNDg admin password': 9,
   'Reset your LNDg admin password': 10,
-  'Your LNDg admin credentials are below. Write them down or save them to a password manager — anyone with these credentials can control your LND node through LNDg.':
-    11,
+  'Your LNDg admin credentials are below. Write them down or save them to a password manager — anyone with these credentials can control your LND node through LNDg.': 11,
   Success: 12,
   Username: 13,
   Password: 14,
