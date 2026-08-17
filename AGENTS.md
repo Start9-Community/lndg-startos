@@ -6,14 +6,13 @@ Develop it inside a StartOS packaging workspace created by `start-cli s9pk init-
 which provides the packaging guide and agent context one level up. If you're reading this in a
 bare clone with no workspace, the full guide is at <https://docs.start9.com/packaging>.
 
-Work this package's `TODO.md` from top to bottom. Keep `README.md` (architecture, for developers and LLMs) and `instructions.md` (end-user docs) in sync with your changes.
+Work this package's `TODO.md` from top to bottom. Keep `README.md` (technical reference for an AI support or administering agent) and `instructions.md` (end-user docs) in sync with your changes.
 
 ## This repo
 
-- **Package id is `lndg`.** LNDg is a Django app; its `settings.py` is composed fresh at every start from a persisted upstream base (`main:./base-settings.py`, written by `init/bootstrapSettings.ts`) plus a StartOS overrides block (`composeOverrides` in `startos/utils.ts`). Python's last-assignment-wins means the overrides shadow the base — that's how `LND_RPC_SERVER`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, and `DATABASES` get set at start without mutating the base file.
-- **Hard dependency on LND, reached over the LXC bridge.** `main.ts` resolves LND's gRPC `host:port` through `sdk.host.getBridgeAddress` (resolved from the binding’s own derived bridge address, so it reacts only to a real address change) and writes it into `LND_RPC_SERVER`. `gRPCHostId`/`gRPCPort` are imported from `lnd-startos/startos/interfaces` — `lnd-startos` is declared as a `github:` source dependency in `package.json`, so the ids stay in sync automatically; don't reintroduce hardcoded `'grpc'`/`10009` literals. LND's `grpc` binding is published only after the first wallet unlock, so the helper resolves `null` until then; while null, main omits the `LND_RPC_SERVER` override entirely (the bootstrap seed in `base-settings.py` stays, the dial fails, and the health check shows it) and the `.const()` heals on unlock (one restart). It never restarts on LND updates or lock/unlock cycles. TLS is validated against `tls.cert` read off the read-only LND mount at `/mnt/lnd`, whose StartOS-issued cert covers the bridge address.
-- **Admin password is action-driven.** It's generated on demand by the `reset-admin-credentials` action; its absence in `store.json` triggers a critical task on init.
-
-## Inspecting a running install
-
-To run a command inside the service's container (read its generated config, grep app logs), use `start-cli package attach lndg -n lndg-main -- <cmd>`. Select the subcontainer by **name** with `-n` (the name passed to `SubContainer.of` in `main.ts` — here `lndg-main`) or by image with `-i`. Note: `-s/--subcontainer` matches the internal **Guid**, not the name, so passing a name to `-s` fails with "no matching subcontainers".
+- **`SECURE_PROXY_SSL_HEADER` and `USE_X_FORWARDED_HOST` are load-bearing.** StartOS terminates TLS upstream, so without them Django's calculated origin differs from the browser's and **login POSTs 403 on a CSRF origin mismatch** — which presents as a rejected password, not as a proxy problem.
+- **Omit `LND_RPC_SERVER` entirely when the address is unresolved.** Writing a placeholder that pretends to be LND hides the failure; leaving the bootstrap seed active makes the dial fail visibly and the `.const()` heals on unlock with one restart.
+- **`gRPCHostId`/`gRPCPort` come from `lnd-startos/startos/interfaces`**, declared as a `github:` source dependency in `package.json` — don't reintroduce hardcoded `'grpc'`/`10009` literals.
+- **`bootstrapSettings` runs on every init kind, not just install.** The base file is tied to the image version, so a restore from an older backup onto a newer image would otherwise leave a stale base missing fields the new version expects. It calls `initialize.write_settings` directly via `python -c` to skip the script's `initialize_django` phase — migrate/collectstatic/createsuperuser against an ephemeral DB — because only the file is wanted.
+- **The admin password is deliberately not seeded.** Its absence in `store.json` is what raises the critical task; seeding a default would silently create an account with a known password.
+- **LND's `channel.db` is mounted as well as its credentials**, because LNDg reads it directly for analytics the RPC does not expose.

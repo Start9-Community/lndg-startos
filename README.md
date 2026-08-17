@@ -4,16 +4,15 @@
 
 # LNDg on StartOS
 
-> **Upstream docs:** <https://github.com/cryptosharks131/lndg#readme>
->
 > Everything not listed in this document should behave the same as upstream
 > LNDg. If a feature, setting, or behavior is not mentioned here, the upstream
-> documentation is accurate and fully applicable.
+> documentation is accurate and fully applicable — see the Documentation
+> section of `instructions.md` for links.
 
-[LNDg](https://github.com/cryptosharks131/lndg) is a web interface and
-auto-rebalancer for LND routing node operators. It analyzes LND data and
-leverages its backend database for automation tools around rebalancing and
-basic maintenance tasks.
+[LNDg](https://github.com/cryptosharks131/lndg) is a web dashboard and automation suite for an LND node: channel management, fee policy, rebalancing, and analytics. This package runs it against the LND on the same server, composing its Django settings fresh at every start so the interface's addresses and LND's location are always current.
+
+- **Upstream repo:** <https://github.com/cryptosharks131/lndg>
+- **Wrapper repo:** <https://github.com/Start9-Community/lndg-startos>
 
 ---
 
@@ -21,216 +20,160 @@ basic maintenance tasks.
 
 - [Image and Container Runtime](#image-and-container-runtime)
 - [Volume and Data Layout](#volume-and-data-layout)
-- [Installation and First-Run Flow](#installation-and-first-run-flow)
-- [Configuration Management](#configuration-management)
-- [Network Access and Interfaces](#network-access-and-interfaces)
+- [File Models](#file-models)
 - [Dependencies](#dependencies)
+- [Network Access and Interfaces](#network-access-and-interfaces)
+- [Installation and First-Run Flow](#installation-and-first-run-flow)
 - [Actions](#actions)
-- [Backups and Restore](#backups-and-restore)
+- [Tasks](#tasks)
 - [Health Checks](#health-checks)
+- [Backups and Restore](#backups-and-restore)
 - [Limitations and Differences](#limitations-and-differences)
-- [What Is Unchanged from Upstream](#what-is-unchanged-from-upstream)
 - [Quick Reference for AI Consumers](#quick-reference-for-ai-consumers)
 
 ---
 
 ## Image and Container Runtime
 
-| Property         | Value                                       |
-| ---------------- | ------------------------------------------- |
-| Image            | `ghcr.io/cryptosharks131/lndg` (unmodified) |
-| Architectures    | x86_64, aarch64                             |
-| Upstream WORKDIR | `/app` (cloned lndg repo)                   |
-| Runtime          | Python / Django + Django REST Framework     |
+One upstream image, consumed unmodified.
 
----
+| Property      | Value                          |
+| ------------- | ------------------------------ |
+| Image         | `ghcr.io/cryptosharks131/lndg` |
+| Architectures | x86_64, aarch64                |
+| Command       | The application's controller   |
+
+| Subcontainer              | Purpose                                                |
+| ------------------------- | ------------------------------------------------------ |
+| `lndg-main`               | Three oneshots and the daemon — the one to `attach` to |
+| `lndg-bootstrap-settings` | Temporary, init only: writes the base settings file    |
+
+Three oneshots run before the daemon: database migrations, ensuring the admin account exists, and collecting static assets.
 
 ## Volume and Data Layout
 
-| Volume         | Mount Point | Purpose                                       |
-| -------------- | ----------- | --------------------------------------------- |
-| `main`         | `/data`     | Service data root (sqlite DB + `store.json`)  |
-| LND dependency | `/mnt/lnd`  | Read-only access to LND macaroon and TLS cert |
+One volume, plus a read-only view of LND's.
 
-**Key paths on the `main` volume:**
+| Volume            | Mount Point | Purpose                                           |
+| ----------------- | ----------- | ------------------------------------------------- |
+| `main`            | `/data`     | The database, the base settings, the store        |
+| LND's `main` (ro) | `/mnt/lnd`  | LND's certificate, macaroon, and channel database |
 
-- `store.json` — admin password (StartOS-managed)
-- `db.sqlite3` — LNDg Django sqlite database
-- `base-settings.py` — upstream-canonical Django settings (seeded per install/upgrade; used as the base layer when composing the subcontainer's `settings.py` at start)
+| Path               | Written by | Holds                                      |
+| ------------------ | ---------- | ------------------------------------------ |
+| `db.sqlite3`       | LNDg       | Every setting, policy, and record it keeps |
+| `base-settings.py` | Init       | Upstream's canonical Django settings       |
+| `store.json`       | Actions    | The admin password                         |
 
----
+**LND's channel database is mounted too**, not just its credentials — LNDg reads it directly for analytics that the RPC does not expose.
 
-## Installation and First-Run Flow
+## File Models
 
-| Step                | Upstream                         | StartOS                                                                                                      |
-| ------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Installation        | `git clone` + `pip install`      | Install from marketplace                                                                                     |
-| Settings generation | Manual `python initialize.py`    | `init/bootstrapSettings.ts` runs `initialize.write_settings` once per install/upgrade in a temp subcontainer |
-| Database init       | `manage.py migrate`              | `migrate` oneshot on every start (idempotent)                                                                |
-| LND connection      | Manual flags to `initialize.py`  | Auto-wired via LND dependency — gRPC reached over the LXC bridge                                             |
-| Authentication      | Interactive prompt or `-pw` flag | Generated on-demand by the **Admin Credentials** critical task                                               |
+Two models, and the more interesting file is the one that is **not** persisted.
 
-**First-run steps:**
+| File               | Format | Modelled                  | Written by |
+| ------------------ | ------ | ------------------------- | ---------- |
+| `base-settings.py` | text   | Yes — `FileHelper.string` | Init       |
+| `store.json`       | JSON   | Yes — `FileHelper.json`   | The action |
 
-1. Install LND on StartOS.
-2. Install LNDg from the marketplace. Init creates an empty `store.json`
-   (no password yet) and `bootstrapSettings` writes the upstream-canonical
-   `base-settings.py` onto the main volume.
-3. Because no admin password exists yet, a **critical task** appears
-   prompting you to run the **Admin Credentials** action. Run it — it
-   generates a 22-character password, persists it to `store.json`, and
-   reveals both the username and password. Save the password somewhere
-   safe.
-4. Start the service. Main composes `settings.py` from the base plus
-   StartOS overrides, runs Django migrations, and `ensure-superuser`
-   creates the `lndg-admin` Django user with the password you just
-   generated.
-5. Open the web UI and log in as `lndg-admin` with the retrieved password.
-6. If you ever forget the password, run the **Admin Credentials** action
-   again at any time — it resets the password and reveals the new value.
-   The Django superuser gets re-synced on the next start.
+**The live settings file is composed at every start and never persisted.** It is the persisted base plus a StartOS overrides block, written into the container's own filesystem — Python's last-assignment-wins is what lets the overrides shadow upstream's defaults without editing the base.
 
----
+What the overrides set, and why each has to be computed rather than stored:
 
-## Configuration Management
+- **The allowed hosts and trusted origins**, from the interface's _current_ addresses. Adding an address and not regenerating these is how a Django app starts rejecting logins.
+- **LND's gRPC address**, resolved live.
+- **The proxy protocol header**, because StartOS terminates TLS upstream. Without honoring it, Django computes an origin that does not match the browser's and **login POSTs fail with a CSRF origin mismatch** — a failure that looks like a wrong password.
+- **The database location**, pointing at the volume rather than the image.
 
-### store.json (StartOS-managed)
+**The base file is rewritten on every init, not just install.** It is tied to the image version, so a restore from an older backup onto a newer image would otherwise leave a stale base missing fields the new version expects.
 
-| Field           | Default                                                                   | Purpose                                                                                                                                                                 |
-| --------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adminPassword` | Unset initially — generated on-demand by the **Admin Credentials** action | Django superuser password. Whenever this field is missing, a critical task appears prompting the user to create (first run) or reset (subsequent runs) the credentials. |
-
-The username is the fixed constant `lndg-admin` (`startos/utils.ts`), not a stored field.
-
-### settings.py (base + overrides)
-
-`lndg/settings.py` is built from two independent layers:
-
-1. **Base** (`main:./base-settings.py`, persisted on volume) — upstream's
-   canonical Django settings.py, written once per install/upgrade by
-   `init/bootstrapSettings.ts`. That init step spins up a temp subcontainer
-   (`sdk.SubContainer.withTemp`), calls `initialize.write_settings` via
-   `python -c` (skipping upstream's embedded `initialize_django` phase so
-   no ephemeral migrate/collectstatic/createsuperuser runs), and `cp`s the
-   generated file onto the main volume. Upstream owns this content —
-   `LOGIN_REQUIRED`, `AUTH_PASSWORD_VALIDATORS`, `INSTALLED_APPS`,
-   `MIDDLEWARE`, `REST_FRAMEWORK`, `SESSION_COOKIE_AGE`, etc. all flow
-   through untouched.
-
-2. **Overrides** (composed in TypeScript via `composeOverrides()` in
-   `utils.ts`) — appended to the base on every service start. Python's
-   last-assignment-wins semantics means these silently shadow upstream's
-   defaults without mutating the base file.
-
-At daemon start, `main.ts` reads the base (reactive via
-`FileHelper.string.const()`) and writes the concatenation to the
-subcontainer's `/app/lndg/settings.py` via `appSub.writeFile`. The
-subcontainer rootfs is ephemeral — settings.py is composed fresh each
-start so interface add/remove propagates via the reactive hostname read.
-
-| Setting                                                                                                                                                                                                                                     | Layer    | Source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `INSTALLED_APPS`, `MIDDLEWARE`, `TEMPLATES`, `AUTH_PASSWORD_VALIDATORS`, `REST_FRAMEWORK`, `LOGIN_REQUIRED`, `SESSION_COOKIE_AGE`, `SECRET_KEY`, `LND_TLS_PATH`, `LND_MACAROON_PATH`, `LND_DATABASE_PATH`, `LND_NETWORK`, `LND_MAX_MESSAGE` | Base     | Upstream `initialize.write_settings` output. `SECRET_KEY` is a random 64-char value upstream writes into `base-settings.py`; it persists on the volume across service restarts and rotates only on install/restore/upgrade. `LND_RPC_SERVER` is written here too as a placeholder but shadowed at start (see below).                                                                                                                                                                                                                                                                                  |
-| `DATABASES`                                                                                                                                                                                                                                 | Override | sqlite at `/data/db.sqlite3` on the persistent volume                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `LND_RPC_SERVER`                                                                                                                                                                                                                            | Override | LND's gRPC `host:port` over the LXC bridge, resolved reactively from the `lnd` dependency's `grpc` host via `sdk.host.getBridgeAddress`. Replaces the old `lnd.startos:10009` DNS name — LND's StartOS-issued cert now covers the bridge address, which the `tls.cert` on the read-only LND mount validates. LND's gRPC binding appears only after the first wallet unlock, so until then the override is omitted (LNDg cannot reach LND and its health check reflects that) and it heals automatically (one restart) once LND is unlocked; it does not restart on LND updates or lock/unlock cycles. |
-| `ALLOWED_HOSTS`                                                                                                                                                                                                                             | Override | `localhost`, `127.0.0.1`, plus every browser-facing hostname from the `ui` interface (LXC bridge and link-local addresses excluded)                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `CSRF_TRUSTED_ORIGINS`                                                                                                                                                                                                                      | Override | every UI hostname with both `http://` and `https://` schemes (belt-and-suspenders — see note below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `SECURE_PROXY_SSL_HEADER`, `USE_X_FORWARDED_HOST`                                                                                                                                                                                           | Override | Tells Django to honor the `X-Forwarded-Proto` / `X-Forwarded-Host` headers set by StartOS's reverse proxy on the internal `10.0.3.0/24` network. Without this, Django sees the request as HTTP (the proxy terminated TLS) while the browser sent `Origin: https://...`, producing a CSRF Origin mismatch that 403s every POST. Analogue of nextcloud's `trusted_proxies` config.                                                                                                                                                                                                                      |
-| `CORS_ALLOW_CREDENTIALS`, `CORS_ORIGIN_ALLOW_ALL`, `GRPC_DNS_RESOLVER`                                                                                                                                                                      | Override | Static — required for StartOS hostname/DNS behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `LOGIN_URL`, `LOGIN_REDIRECT_URL`                                                                                                                                                                                                           | Override | `/lndg-admin/login/` and `/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-
----
-
-## Network Access and Interfaces
-
-| Interface     | Port | Protocol | Purpose                   |
-| ------------- | ---- | -------- | ------------------------- |
-| Web UI (`ui`) | 8889 | HTTP     | Node management dashboard |
-
----
+**LND's address is omitted from the overrides when it does not resolve**, rather than defaulted — the seeded placeholder in the base stays active, the dial fails, and the health check shows it. Writing a placeholder that pretends to be LND would hide the problem.
 
 ## Dependencies
 
-| Dependency | Required | Purpose                               |
-| ---------- | -------- | ------------------------------------- |
-| LND        | Required | Lightning node to manage and automate |
+One, and it is required.
 
-LNDg reads LND's TLS cert and admin macaroon directly from the read-only
-dependency mount (`/mnt/lnd/tls.cert` and
-`/mnt/lnd/data/chain/bitcoin/mainnet/admin.macaroon`); no copy is kept on
-the LNDg volume.
+| Dependency | Required | Health checks required | Mounted                         | Why                 |
+| ---------- | -------- | ---------------------- | ------------------------------- | ------------------- |
+| LND        | Yes      | `lnd`                  | `main`, read-only at `/mnt/lnd` | The node it manages |
 
----
+**This package uses LND's admin macaroon.** LNDg opens and closes channels, sets fees, and rebalances — so access to this service is operational control of your node.
+
+LND publishes its gRPC binding only after its wallet has first been unlocked. Until then the address does not resolve and LNDg cannot connect; it heals with one restart when the binding appears, and does **not** restart on LND updates or on later lock and unlock cycles.
+
+The certificate is read from the mount and covers the bridge address LND is dialed at.
+
+## Network Access and Interfaces
+
+One interface.
+
+| Interface | Id   | Type | Port | Description            |
+| --------- | ---- | ---- | ---- | ---------------------- |
+| Web UI    | `ui` | ui   | 8889 | The LNDg web interface |
+
+Bound on the `ui-multi` MultiHost over HTTP and not masked. LNDg's own Django login gates it.
+
+**Adding a new address requires a restart before it works.** The allowed-hosts and trusted-origins lists are computed at start, so until the service restarts a newly added address is rejected by Django rather than served.
+
+## Installation and First-Run Flow
+
+Install writes the base settings file and seeds the store, then raises a critical task to create the admin credentials — the password is deliberately **not** seeded, because its absence is what raises the task.
+
+Start-up then runs migrations, ensures the admin account matches the stored password, and collects static assets before the daemon starts. The daemon carries a generous grace period because the first start does all three.
+
+**LND must be running and unlocked** for LNDg to show anything. It will start and serve its interface regardless, showing an empty or erroring dashboard until the connection resolves.
 
 ## Actions
 
-| Action                                        | Purpose                                                                                                                                                                                           |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin Credentials (`reset-admin-credentials`) | Create (first run) or reset (subsequent runs) the LNDg admin password. Reveals the username and new password. Runnable in any service state; the Django superuser is re-synced on the next start. |
+One action.
 
----
+### Reset Admin Credentials
 
-## Backups and Restore
+Generates the web login password and shows it once. Run it when its task appears, or to recover from a lost password.
 
-**Included in backup:**
+- **What it changes:** the password in the store, and the admin account in the application's database on the next start.
+- **Cost:** the service restarts, since the account is reconciled by a start-up step rather than live.
+- **Repeat safety:** each run generates a **new** password and invalidates the old one.
+- **Outputs:** a fixed username and the new password.
 
-- `main` volume — includes `store.json`, `db.sqlite3`, and `base-settings.py`
+## Tasks
 
-**Restore behavior:**
+One, and it is reactive.
 
-- Credentials are restored as-is (`store.json`).
-- Sqlite DB is restored to `/data/db.sqlite3` on the volume.
-- `base-settings.py` is re-generated on restore anyway (since
-  `bootstrapSettings` runs on every init kind), so a backup taken against
-  an older image version stays consistent with the current image.
-- LND macaroon and TLS cert are read live from the read-only LND dependency
-  mount (`/mnt/lnd`) — nothing to restore.
+| Task                    | Severity   | Raised when                     | Cleared when    |
+| ----------------------- | ---------- | ------------------------------- | --------------- |
+| Reset Admin Credentials | `critical` | Any init that finds no password | The action runs |
 
----
+`critical` blocks the service from starting and suspends the ordinary controls, so a fresh install shows the task and nothing else.
 
 ## Health Checks
 
-| Check  | Display Name  | Method              | Messages          |
-| ------ | ------------- | ------------------- | ----------------- |
-| Web UI | Web Interface | Port 8889 listening | Ready / Not ready |
+One check, on the only daemon.
 
-The health check has a 60-second grace period to allow Django migrations
-and static file collection to complete after a fresh container rebuild.
+| Check     | Displayed as    | Method                 | Grace |
+| --------- | --------------- | ---------------------- | ----- |
+| `primary` | "Web Interface" | Port 8889 is listening | 60s   |
 
----
+It reports that the interface is serving, not that LND is connected. **A green check with an empty dashboard means the LND connection**, and the two causes are LND not yet unlocked and LND's address not yet resolved — both visible in the service logs.
+
+Nothing here reports on LNDg's automation. Whether rebalancing is running and succeeding is visible inside the application.
+
+## Backups and Restore
+
+The `main` volume is copied wholesale — `sdk.Backups.ofVolumes('main')`. That is LNDg's database, the base settings, and the admin password.
+
+The database is where everything the user configures lives — fee policies, rebalancing rules, and the full history LNDg has accumulated — so this backup is the whole of the application's state.
+
+A restored instance comes back with the same password and the same policies. **The base settings file is rewritten on init**, so a restore onto a newer image picks up that version's settings rather than carrying the old one forward, and LND's address is re-resolved on the new server.
 
 ## Limitations and Differences
 
-1. **settings.py is a composed file.** The upstream-canonical base lives
-   on the volume at `base-settings.py` (written once per install/upgrade);
-   the subcontainer's `/app/lndg/settings.py` is re-composed on every start
-   from base + StartOS overrides. Manual edits to either layer will not
-   persist through a restart.
-2. **LND mount is read-only.** LNDg reads the LND admin macaroon and TLS
-   cert directly from the dependency mount at `/mnt/lnd`; no copy is kept
-   on the LNDg volume.
-3. **Admin password is generated by the action, not pre-seeded.** On fresh
-   install the `adminPassword` field in `store.json` is absent, which
-   triggers a critical task pointing at the **Admin Credentials** action.
-   The action generates the password, persists it, and reveals it in the
-   same response. Use the same action to reset the password later.
-4. **Single-network: mainnet only.** `init/bootstrapSettings.ts` calls
-   `initialize.write_settings(..., lnd_network='mainnet', ...)`, and the
-   macaroon and `channel.db` paths hardcode `mainnet`, matching the
-   behavior of the legacy package.
-5. **Legacy `config.yaml` / `stats.yaml` files are gone.** The legacy
-   package used them for StartOS config/properties; they are now
-   replaced by `store.json` and the **Admin Credentials** action.
-
----
-
-## What Is Unchanged from Upstream
-
-- Auto-rebalancer logic and configuration (inside the LNDg web UI)
-- Channel analysis, forwards dashboard, and failed HTLC explorer
-- Fee management tools
-- All `controller.py` background jobs
-- REST API surface
+1. **The admin macaroon is required**, so access to this service is operational control of the node.
+2. **A newly added address needs a restart** before Django will accept requests on it.
+3. **The live settings file is ephemeral** and regenerated each start; editing it inside the container does not survive.
+4. **The password can be reset but not chosen**, and resetting restarts the service.
+5. **Mainnet only.** The macaroon, channel database, and network are all pinned to Bitcoin mainnet.
+6. **LNDg reads LND's channel database directly**, so the two must be on the same server.
 
 ---
 
@@ -239,22 +182,27 @@ and static file collection to complete after a fresh container rebuild.
 ```yaml
 package_id: lndg
 image: ghcr.io/cryptosharks131/lndg
-architectures: [x86_64, aarch64]
+architectures:
+  - x86_64
+  - aarch64
+subcontainers:
+  - lndg-main # three oneshots and the daemon
+  - lndg-bootstrap-settings # temporary, init only
 volumes:
-  main: /data
-dependency_mounts: lnd:main -> /mnt/lnd (read-only)
-ports:
-  ui: 8889
-dependencies: lnd (required)
+  main: /data # LND's main volume is mounted read-only at /mnt/lnd
+file_models:
+  - base-settings.py # upstream's canonical settings, rewritten every init
+  - store.json # the admin password
+  # the live settings.py is composed at each start into the container, not persisted
+startos_managed_env_vars: [] # settings are composed into settings.py
+dependencies:
+  - lnd # required, kind: running, admin macaroon + channel.db via a read-only mount
+interfaces:
+  ui: { type: ui, port: 8889 }
 actions:
   - reset-admin-credentials
+tasks:
+  - { action: reset-admin-credentials, severity: critical } # reactive
 health_checks:
-  - ui: port_listening 8889 (60s grace)
-backup_volumes:
-  - main
-settings_py_composition:
-  - base: main:./base-settings.py (upstream canonical, written by init/bootstrapSettings.ts via SubContainer.withTemp + initialize.write_settings)
-  - overrides: composeOverrides() in utils.ts (appended in main.ts at every start)
-task_reactive:
-  - critical: reset-admin-credentials (whenever adminPassword is missing)
+  - primary # displayed "Web Interface"; says nothing about the LND connection
 ```
