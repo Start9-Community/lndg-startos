@@ -2,6 +2,7 @@
 
 ## Documentation
 
+- [Start9 Bitcoin Guides](https://docs.start9.com/bitcoin-guides/) — connecting wallets and dashboards to a Lightning node on StartOS.
 - [LNDg upstream README](https://github.com/cryptosharks131/lndg#readme) — the upstream project README, covering the auto-rebalancer, fee management tools, and dashboard features.
 
 ## What you get on StartOS
