@@ -27,6 +27,7 @@ verified, tried, and decided belongs in the commit message and the PR body.
 ## This repo
 
 - **`SECURE_PROXY_SSL_HEADER` and `USE_X_FORWARDED_HOST` are load-bearing.** StartOS terminates TLS upstream, so without them Django's calculated origin differs from the browser's and **login POSTs 403 on a CSRF origin mismatch** — which presents as a rejected password, not as a proxy problem.
+- **Don't build `ALLOWED_HOSTS` or `CSRF_TRUSTED_ORIGINS` from the interface's addresses.** Reading them with `.const()` restarts the service every time a gateway gains or loses an address.
 - **Omit `LND_RPC_SERVER` entirely when the address is unresolved.** Writing a placeholder that pretends to be LND hides the failure; leaving the bootstrap seed active makes the dial fail visibly and the `.const()` heals on unlock with one restart.
 - **`gRPCHostId`/`gRPCPort` come from `lnd-startos/startos/interfaces`**, declared as a `github:` source dependency in `package.json` — don't reintroduce hardcoded `'grpc'`/`10009` literals.
 - **`bootstrapSettings` runs on every init kind, not just install.** The base file is tied to the image version, so a restore from an older backup onto a newer image would otherwise leave a stale base missing fields the new version expects. It calls `initialize.write_settings` directly via `python -c` to skip the script's `initialize_django` phase — migrate/collectstatic/createsuperuser against an ephemeral DB — because only the file is wanted.

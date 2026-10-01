@@ -2,7 +2,6 @@ import { gRPCHostId, gRPCPort } from 'lnd-startos/startos/interfaces'
 import { baseSettingsPy } from './fileModels/base-settings.py'
 import { storeJson } from './fileModels/store.json'
 import { i18n } from './i18n'
-import { uiHostId, uiInterfaceId } from './interfaces'
 import { sdk } from './sdk'
 import {
   adminUsername,
@@ -35,38 +34,6 @@ u.save()
 
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting LNDg...'))
-
-  // Browser-facing hostnames of the UI interface, for ALLOWED_HOSTS / CSRF.
-  // Exclude the LXC bridge and link-local addresses (neither is reached from a
-  // browser) and bracket IPv6 so it composes into a valid host / origin.
-  const hostnameInfo =
-    (await sdk.host
-      .getOwn(effects, uiHostId, (host) => {
-        const ui =
-          host &&
-          Object.values(host.bindings)
-            .flatMap((b) => Object.values(b.interfaces))
-            .find((i) => i.id === uiInterfaceId)
-        return ui
-          ? ui.addressInfo
-              .filter({ exclude: { kind: ['link-local', 'bridge'] } })
-              .format('hostname-info')
-          : []
-      })
-      .const()) ?? []
-  const hostnames = hostnameInfo.map((h) =>
-    h.metadata.kind === 'ipv6' ? `[${h.hostname}]` : h.hostname,
-  )
-
-  const allowedHosts = Array.from(
-    new Set(['localhost', '127.0.0.1', ...hostnames]),
-  )
-  const csrfOrigins = Array.from(
-    new Set([
-      ...hostnames.map((h) => `https://${h}`),
-      ...hostnames.map((h) => `http://${h}`),
-    ]),
-  )
 
   // LND's gRPC over the LXC bridge (replaces `lnd.startos:10009`). Resolved
   // reactively with `sdk.host.getBridgeAddress` against LND's `grpc` host: the
@@ -120,10 +87,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // last-assignment-wins shadows upstream without mutating the base file.
   await appSub.writeFile(
     settingsPath,
-    baseSettings +
-      '\n' +
-      composeOverrides({ allowedHosts, csrfOrigins, lndRpcServer }) +
-      '\n',
+    baseSettings + '\n' + composeOverrides(lndRpcServer) + '\n',
   )
 
   return sdk.Daemons.of(effects)
@@ -161,7 +125,14 @@ export const main = sdk.setupMain(async ({ effects }) => {
     .addDaemon('primary', {
       subcontainer: appSub,
       exec: {
-        command: ['python', 'controller.py', 'runserver', `0.0.0.0:${uiPort}`],
+        // Without --noreload, Django traps SIGTERM and hangs at exit until SIGKILL.
+        command: [
+          'python',
+          'controller.py',
+          'runserver',
+          `0.0.0.0:${uiPort}`,
+          '--noreload',
+        ],
         cwd: appDir,
         user: 'root',
       },
