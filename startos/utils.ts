@@ -19,7 +19,7 @@ export const dbPath = `${dataDir}/db.sqlite3` as const
 // Django settings file inside the subcontainer. Composed on every start as
 // `<base-settings.py from volume> + \n + <overrides block>` and written to
 // the subcontainer rootfs via `appSub.writeFile`. Ephemeral — regenerated
-// each start so reactive interface changes flow through.
+// each start so LND's current address flows through.
 export const settingsPath = `${appDir}/lndg/settings.py` as const
 
 // Persisted upstream-canonical settings.py filename on the main volume.
@@ -37,25 +37,15 @@ export const adminUsername = 'lndg-admin' as const
 // StartOS overrides appended to upstream's settings.py. Python's
 // last-assignment-wins lets us shadow upstream defaults without editing
 // the base file.
-export function composeOverrides(opts: {
-  allowedHosts: string[]
-  csrfOrigins: string[]
-  lndRpcServer: string | null
-}): string {
+export function composeOverrides(lndRpcServer: string | null): string {
   const quote = (s: string) => `'${s.replace(/'/g, "\\'")}'`
-  const hostsList = opts.allowedHosts.map(quote).join(', ')
-  const originsList = opts.csrfOrigins.map(quote).join(', ')
   // Omit the override entirely when LND's gRPC address is unresolved so we
   // never write a placeholder that pretends to be LND. The base-settings.py
   // seed stays active (dial fails, health check red) until the .const() heals.
   const lndRpc =
-    opts.lndRpcServer != null
-      ? `LND_RPC_SERVER = ${quote(opts.lndRpcServer)}\n`
-      : ''
+    lndRpcServer != null ? `LND_RPC_SERVER = ${quote(lndRpcServer)}\n` : ''
 
   return `# --- StartOS overrides (appended at daemon start) ---
-ALLOWED_HOSTS = [${hostsList}]
-CSRF_TRUSTED_ORIGINS = [${originsList}]
 ${lndRpc}# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
 # calculated origin matches the browser's — otherwise login POSTs 403 on
 # CSRF origin mismatch.

@@ -9,7 +9,7 @@
 > documentation is accurate and fully applicable — see the Documentation
 > section of `instructions.md` for links.
 
-[LNDg](https://github.com/cryptosharks131/lndg) is a web dashboard and automation suite for an LND node: channel management, fee policy, rebalancing, and analytics. This package runs it against the LND on the same server, composing its Django settings fresh at every start so the interface's addresses and LND's location are always current.
+[LNDg](https://github.com/cryptosharks131/lndg) is a web dashboard and automation suite for an LND node: channel management, fee policy, rebalancing, and analytics. This package runs it against the LND on the same server, composing its Django settings fresh at every start so LND's location is always current.
 
 - **Upstream repo:** <https://github.com/cryptosharks131/lndg>
 - **Wrapper repo:** <https://github.com/Start9-Community/lndg-startos>
@@ -80,7 +80,6 @@ Two models, and the more interesting file is the one that is **not** persisted.
 
 What the overrides set, and why each has to be computed rather than stored:
 
-- **The allowed hosts and trusted origins**, from the interface's _current_ addresses. Adding an address and not regenerating these is how a Django app starts rejecting logins.
 - **LND's gRPC address**, resolved live.
 - **The proxy protocol header**, because StartOS terminates TLS upstream. Without honoring it, Django computes an origin that does not match the browser's and **login POSTs fail with a CSRF origin mismatch** — a failure that looks like a wrong password.
 - **The database location**, pointing at the volume rather than the image.
@@ -113,7 +112,7 @@ One interface.
 
 Bound on the `ui-multi` MultiHost over HTTP and not masked. LNDg's own Django login gates it.
 
-**Adding a new address requires a restart before it works.** The allowed-hosts and trusted-origins lists are computed at start, so until the service restarts a newly added address is rejected by Django rather than served.
+**Django accepts any `Host`**, which is upstream's default, so an address added or removed in StartOS takes effect without a restart. Logins pass the CSRF check on every address because the browser's origin is compared with the request's own host and forwarded scheme.
 
 ## Installation and First-Run Flow
 
@@ -169,11 +168,10 @@ A restored instance comes back with the same password and the same policies. **T
 ## Limitations and Differences
 
 1. **The admin macaroon is required**, so access to this service is operational control of the node.
-2. **A newly added address needs a restart** before Django will accept requests on it.
-3. **The live settings file is ephemeral** and regenerated each start; editing it inside the container does not survive.
-4. **The password can be reset but not chosen**, and resetting restarts the service.
-5. **Mainnet only.** The macaroon, channel database, and network are all pinned to Bitcoin mainnet.
-6. **LNDg reads LND's channel database directly**, so the two must be on the same server.
+2. **The live settings file is ephemeral** and regenerated each start; editing it inside the container does not survive.
+3. **The password can be reset but not chosen**, and resetting restarts the service.
+4. **Mainnet only.** The macaroon, channel database, and network are all pinned to Bitcoin mainnet.
+5. **LNDg reads LND's channel database directly**, so the two must be on the same server.
 
 ---
 
