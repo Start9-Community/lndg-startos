@@ -37,23 +37,22 @@ export const adminUsername = 'lndg-admin' as const
 // StartOS overrides appended to upstream's settings.py. Python's
 // last-assignment-wins lets us shadow upstream defaults without editing
 // the base file.
-export function composeOverrides(lndRpcServer: string | null): string {
+export function composeOverrides(
+  lndRpcServer: string | null,
+  secretKey: string,
+): string {
   const quote = (s: string) => `'${s.replace(/'/g, "\\'")}'`
   // Omit the override entirely when LND's gRPC address is unresolved so we
-  // never write a placeholder that pretends to be LND. The base-settings.py
-  // seed stays active (dial fails, health check red) until the .const() heals.
+  // never write a placeholder that pretends to be LND.
   const lndRpc =
     lndRpcServer != null ? `LND_RPC_SERVER = ${quote(lndRpcServer)}\n` : ''
 
   return `# --- StartOS overrides (appended at daemon start) ---
-${lndRpc}# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
+${lndRpc}SECRET_KEY = ${quote(secretKey)}
+# StartOS terminates TLS upstream. Honor X-Forwarded-Proto so Django's
 # calculated origin matches the browser's — otherwise login POSTs 403 on
 # CSRF origin mismatch.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-USE_X_FORWARDED_HOST = True
-CORS_ALLOW_CREDENTIALS = True
-CORS_ORIGIN_ALLOW_ALL = True
-GRPC_DNS_RESOLVER = 'native'
 LOGIN_URL = '/lndg-admin/login/'
 LOGIN_REDIRECT_URL = '/'
 DATABASES = {
@@ -63,5 +62,7 @@ DATABASES = {
         'OPTIONS': {'timeout': 20},
     },
 }
+# Upstream logs to files under data/, which its Docker setup mounts and the image lacks.
+os.makedirs(BASE_DIR / 'data', exist_ok=True)
 `
 }

@@ -6,6 +6,9 @@ const dict = {
   'Web Interface': 1,
   'The web interface is ready': 2,
   'The web interface is not ready': 3,
+  'LND Connection': 15,
+  'Connected to LND': 16,
+  'LND connection failed': 17,
 
   // interfaces.ts
   'Web UI': 4,
