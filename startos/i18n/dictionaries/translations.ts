@@ -17,6 +17,9 @@ export default {
     12: 'Éxito',
     13: 'Usuario',
     14: 'Contraseña',
+    15: 'Conexión con LND',
+    16: 'Conectado a LND',
+    17: 'Falló la conexión con LND',
   } satisfies LangDict,
   de_DE: {
     0: 'LNDg wird gestartet...',
@@ -34,6 +37,9 @@ export default {
     12: 'Erfolg',
     13: 'Benutzername',
     14: 'Passwort',
+    15: 'LND-Verbindung',
+    16: 'Mit LND verbunden',
+    17: 'LND-Verbindung fehlgeschlagen',
   } satisfies LangDict,
   pl_PL: {
     0: 'Uruchamianie LNDg...',
@@ -51,6 +57,9 @@ export default {
     12: 'Sukces',
     13: 'Nazwa użytkownika',
     14: 'Hasło',
+    15: 'Połączenie z LND',
+    16: 'Połączono z LND',
+    17: 'Połączenie z LND nie powiodło się',
   } satisfies LangDict,
   fr_FR: {
     0: 'Démarrage de LNDg...',
@@ -68,5 +77,8 @@ export default {
     12: 'Succès',
     13: "Nom d'utilisateur",
     14: 'Mot de passe',
+    15: 'Connexion à LND',
+    16: 'Connecté à LND',
+    17: 'Échec de la connexion à LND',
   } satisfies LangDict,
 } as Record<string, LangDict>

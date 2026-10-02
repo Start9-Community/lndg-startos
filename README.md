@@ -37,11 +37,11 @@
 
 One upstream image, consumed unmodified.
 
-| Property      | Value                          |
-| ------------- | ------------------------------ |
-| Image         | `ghcr.io/cryptosharks131/lndg` |
-| Architectures | x86_64, aarch64                |
-| Command       | The application's controller   |
+| Property      | Value                                                                  |
+| ------------- | ---------------------------------------------------------------------- |
+| Image         | `ghcr.io/cryptosharks131/lndg`                                         |
+| Architectures | x86_64, aarch64                                                        |
+| Command       | The application's controller, under a shell wrapper that runs as PID 1 |
 
 | Subcontainer              | Purpose                                                |
 | ------------------------- | ------------------------------------------------------ |
@@ -49,6 +49,8 @@ One upstream image, consumed unmodified.
 | `lndg-bootstrap-settings` | Temporary, init only: writes the base settings file    |
 
 Three oneshots run before the daemon: database migrations, ensuring the admin account exists, and collecting static assets.
+
+The controller is upstream's own supervisor: it runs the web server and four background jobs as child processes and restarts any that dies, logging `[Controller] - Process <name> died` when it does. The wrapper makes it the container's init, so stopping the service stops every one of those processes, and a controller that dies takes them with it and is replaced as a whole set.
 
 ## Volume and Data Layout
 
@@ -59,11 +61,11 @@ One volume, plus a read-only view of LND's.
 | `main`            | `/data`     | The database, the base settings, the store        |
 | LND's `main` (ro) | `/mnt/lnd`  | LND's certificate, macaroon, and channel database |
 
-| Path               | Written by | Holds                                      |
-| ------------------ | ---------- | ------------------------------------------ |
-| `db.sqlite3`       | LNDg       | Every setting, policy, and record it keeps |
-| `base-settings.py` | Init       | Upstream's canonical Django settings       |
-| `store.json`       | Actions    | The admin password                         |
+| Path               | Written by          | Holds                                      |
+| ------------------ | ------------------- | ------------------------------------------ |
+| `db.sqlite3`       | LNDg                | Every setting, policy, and record it keeps |
+| `base-settings.py` | Init                | Upstream's canonical Django settings       |
+| `store.json`       | Init and the action | The admin password and Django's secret key |
 
 **LND's channel database is mounted too**, not just its credentials — LNDg reads it directly for analytics that the RPC does not expose.
 
@@ -71,22 +73,24 @@ One volume, plus a read-only view of LND's.
 
 Two models, and the more interesting file is the one that is **not** persisted.
 
-| File               | Format | Modelled                  | Written by |
-| ------------------ | ------ | ------------------------- | ---------- |
-| `base-settings.py` | text   | Yes — `FileHelper.string` | Init       |
-| `store.json`       | JSON   | Yes — `FileHelper.json`   | The action |
+| File               | Format | Modelled                  | Written by          |
+| ------------------ | ------ | ------------------------- | ------------------- |
+| `base-settings.py` | text   | Yes — `FileHelper.string` | Init                |
+| `store.json`       | JSON   | Yes — `FileHelper.json`   | Init and the action |
 
 **The live settings file is composed at every start and never persisted.** It is the persisted base plus a StartOS overrides block, written into the container's own filesystem — Python's last-assignment-wins is what lets the overrides shadow upstream's defaults without editing the base.
 
-What the overrides set, and why each has to be computed rather than stored:
+What the overrides do, and why:
 
 - **LND's gRPC address**, resolved live.
+- **Django's secret key**, kept in the store. Upstream's generator makes a new one every time the base file is rewritten, which would end every login session on each update, reboot, and container rebuild.
 - **The proxy protocol header**, because StartOS terminates TLS upstream. Without honoring it, Django computes an origin that does not match the browser's and **login POSTs fail with a CSRF origin mismatch** — a failure that looks like a wrong password.
 - **The database location**, pointing at the volume rather than the image.
+- **The log directory**, created beside the application. Upstream writes log files under `data/`, which its Docker setup mounts and the image does not contain; LNDg's own Logs page reads them.
 
 **The base file is rewritten on every init, not just install.** It is tied to the image version, so a restore from an older backup onto a newer image would otherwise leave a stale base missing fields the new version expects.
 
-**LND's address is omitted from the overrides when it does not resolve**, rather than defaulted — the seeded placeholder in the base stays active, the dial fails, and the health check shows it. Writing a placeholder that pretends to be LND would hide the problem.
+**LND's address is omitted from the overrides when it does not resolve**, rather than defaulted, so nothing in the settings pretends to be LND. It does not resolve until LND has been unlocked for the first time, and until then LNDg cannot start at all — see Dependencies.
 
 ## Dependencies
 
@@ -98,7 +102,7 @@ One, and it is required.
 
 **This package uses LND's admin macaroon.** LNDg opens and closes channels, sets fees, and rebalances — so access to this service is operational control of your node.
 
-LND publishes its gRPC binding only after its wallet has first been unlocked. Until then the address does not resolve and LNDg cannot connect; it heals with one restart when the binding appears, and does **not** restart on LND updates or on later lock and unlock cycles.
+LND creates its admin macaroon and publishes its gRPC binding only once its wallet has first been unlocked. **Until then LNDg cannot start:** it reads that macaroon as it starts, so its migration step fails with a `FileNotFoundError` naming `admin.macaroon`, and StartOS retries the step until the macaroon exists. After that LNDg does **not** restart on LND updates or on later lock and unlock cycles.
 
 The certificate is read from the mount and covers the bridge address LND is dialed at.
 
@@ -120,7 +124,7 @@ Install writes the base settings file and seeds the store, then raises a critica
 
 Start-up then runs migrations, ensures the admin account matches the stored password, and collects static assets before the daemon starts. The daemon carries a generous grace period because the first start does all three.
 
-**LND must be running and unlocked** for LNDg to show anything. It will start and serve its interface regardless, showing an empty or erroring dashboard until the connection resolves.
+**LND must be running and unlocked** for LNDg to show anything. Once LND has been unlocked for the first time, LNDg starts and serves its interface whether or not LND is up, showing an empty or erroring dashboard until the connection resolves.
 
 ## Actions
 
@@ -132,7 +136,7 @@ Generates the web login password and shows it once. Run it when its task appears
 
 - **What it changes:** the password in the store, and the admin account in the application's database on the next start.
 - **Cost:** the service restarts, since the account is reconciled by a start-up step rather than live.
-- **Repeat safety:** each run generates a **new** password and invalidates the old one.
+- **Repeat safety:** each run generates a **new** password and invalidates the old one, along with every open login session.
 - **Outputs:** a fixed username and the new password.
 
 ## Tasks
@@ -147,19 +151,20 @@ One, and it is reactive.
 
 ## Health Checks
 
-One check, on the only daemon.
+Two checks: one on the daemon, one on its connection to LND.
 
-| Check     | Displayed as    | Method                 | Grace |
-| --------- | --------------- | ---------------------- | ----- |
-| `primary` | "Web Interface" | Port 8889 is listening | 60s   |
+| Check            | Displayed as     | Method                                                                        | Grace |
+| ---------------- | ---------------- | ----------------------------------------------------------------------------- | ----- |
+| `primary`        | "Web Interface"  | Port 8889 is listening                                                        | 60s   |
+| `lnd-connection` | "LND Connection" | A `GetInfo` call to LND with the address, certificate, and macaroon LNDg uses | None  |
 
-It reports that the interface is serving, not that LND is connected. **A green check with an empty dashboard means the LND connection**, and the two causes are LND not yet unlocked and LND's address not yet resolved — both visible in the service logs.
+**Web Interface** reports only that the interface is serving. **LND Connection** is the one that says whether LNDg can do anything: it polls once a minute, and every ten seconds while failing, and its failure message carries the error the attempt gave. Neither check runs until LNDg has started: a service stuck starting with `admin.macaroon` in its log is the case described under Dependencies.
 
 Nothing here reports on LNDg's automation. Whether rebalancing is running and succeeding is visible inside the application.
 
 ## Backups and Restore
 
-The `main` volume is copied wholesale — `sdk.Backups.ofVolumes('main')`. That is LNDg's database, the base settings, and the admin password.
+The `main` volume is copied wholesale — `sdk.Backups.ofVolumes('main')`. That is LNDg's database, the base settings, and the store.
 
 The database is where everything the user configures lives — fee policies, rebalancing rules, and the full history LNDg has accumulated — so this backup is the whole of the application's state.
 
@@ -172,6 +177,7 @@ A restored instance comes back with the same password and the same policies. **T
 3. **The password can be reset but not chosen**, and resetting restarts the service.
 4. **Mainnet only.** The macaroon, channel database, and network are all pinned to Bitcoin mainnet.
 5. **LNDg reads LND's channel database directly**, so the two must be on the same server.
+6. **LNDg's log files are not kept.** They live in the container's own filesystem and start empty at every start, so LNDg's Logs page shows the current run only. The StartOS log keeps the history.
 
 ---
 
@@ -190,7 +196,7 @@ volumes:
   main: /data # LND's main volume is mounted read-only at /mnt/lnd
 file_models:
   - base-settings.py # upstream's canonical settings, rewritten every init
-  - store.json # the admin password
+  - store.json # the admin password and Django's secret key
   # the live settings.py is composed at each start into the container, not persisted
 startos_managed_env_vars: [] # settings are composed into settings.py
 dependencies:
@@ -203,4 +209,5 @@ tasks:
   - { action: reset-admin-credentials, severity: critical } # reactive
 health_checks:
   - primary # displayed "Web Interface"; says nothing about the LND connection
+  - lnd-connection # displayed "LND Connection"; a GetInfo call to LND
 ```

@@ -3,6 +3,7 @@ import { sdk } from '../sdk'
 
 const shape = z.object({
   adminPassword: z.string().optional().catch(undefined),
+  secretKey: z.string().optional().catch(undefined),
 })
 
 export const storeJson = FileHelper.json(

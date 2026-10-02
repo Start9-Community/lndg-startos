@@ -28,8 +28,20 @@ u, _ = U.objects.get_or_create(username=username)
 u.is_staff = True
 u.is_superuser = True
 u.is_active = True
-u.set_password(password)
+if not u.check_password(password):
+    u.set_password(password)
 u.save()
+`.trim()
+
+const lndCheckPy = `
+import sys, grpc
+try:
+    from gui.lnd_deps import lightning_pb2 as ln, lightning_pb2_grpc as lnrpc
+    from gui.lnd_deps.lnd_connect import lnd_connect
+    lnrpc.LightningStub(lnd_connect()).GetInfo(ln.GetInfoRequest(), timeout=10)
+except Exception as e:
+    print((e.details() or e.code().name) if isinstance(e, grpc.RpcError) else e)
+    sys.exit(1)
 `.trim()
 
 export const main = sdk.setupMain(async ({ effects }) => {
@@ -39,13 +51,12 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // reactively with `sdk.host.getBridgeAddress` against LND's `grpc` host: the
   // bridge address only changes when LND's gRPC binding does, so main restarts
   // exactly on LND install/uninstall/port-change — never on LND updates or
-  // lock/unlock cycles (the binding persists across those). LND's `grpc` binding is published only after the first
-  // wallet unlock, so this resolves null until then; while null we omit the
-  // LND_RPC_SERVER override (composeOverrides), leaving the base-settings
-  // placeholder active so the gRPC dial fails into a red health check, and the
-  // .const() heals on unlock (one restart). LND's StartOS-issued cert covers
-  // the bridge address, verified against the tls.cert read off the read-only
-  // LND mount.
+  // lock/unlock cycles (the binding persists across those). LND's `grpc`
+  // binding is published only after the first wallet unlock, so this resolves
+  // null until then, and LNDg cannot start until then either: it reads LND's
+  // macaroon at import. The .const() re-runs main once the binding appears.
+  // LND's StartOS-issued cert covers the bridge address, verified against the
+  // tls.cert read off the read-only LND mount.
   const lndRpcServer = await sdk.host
     .getBridgeAddress(effects, {
       packageId: 'lnd',
@@ -54,9 +65,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
     })
     .const()
 
-  const adminPassword = await storeJson
-    .read((s) => s.adminPassword)
-    .const(effects)
+  const store = await storeJson.read().const(effects)
+  if (!store?.secretKey) {
+    throw new Error('No secret key in store.json')
+  }
 
   const baseSettings = await baseSettingsPy.read().const(effects)
   if (!baseSettings) {
@@ -87,7 +99,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // last-assignment-wins shadows upstream without mutating the base file.
   await appSub.writeFile(
     settingsPath,
-    baseSettings + '\n' + composeOverrides(lndRpcServer) + '\n',
+    baseSettings +
+      '\n' +
+      composeOverrides(lndRpcServer, store.secretKey) +
+      '\n',
   )
 
   return sdk.Daemons.of(effects)
@@ -107,7 +122,9 @@ export const main = sdk.setupMain(async ({ effects }) => {
         cwd: appDir,
         env: {
           DJANGO_SUPERUSER_USERNAME: adminUsername,
-          ...(adminPassword && { DJANGO_SUPERUSER_PASSWORD: adminPassword }),
+          ...(store.adminPassword && {
+            DJANGO_SUPERUSER_PASSWORD: store.adminPassword,
+          }),
         },
         user: 'root',
       },
@@ -125,14 +142,13 @@ export const main = sdk.setupMain(async ({ effects }) => {
     .addDaemon('primary', {
       subcontainer: appSub,
       exec: {
-        // Without --noreload, Django traps SIGTERM and hangs at exit until SIGKILL.
+        // PID 1, so the controller's workers stop with it and cannot outlive it.
         command: [
-          'python',
-          'controller.py',
-          'runserver',
-          `0.0.0.0:${uiPort}`,
-          '--noreload',
+          'sh',
+          '-c',
+          `trap 'kill -TERM -1; exit 0' TERM; python controller.py runserver 0.0.0.0:${uiPort} --noreload & wait $!`,
         ],
+        runAsInit: true,
         cwd: appDir,
         user: 'root',
       },
@@ -146,5 +162,27 @@ export const main = sdk.setupMain(async ({ effects }) => {
         gracePeriod: 60_000,
       },
       requires: ['collectstatic'],
+    })
+    .addHealthCheck('lnd-connection', {
+      ready: {
+        display: i18n('LND Connection'),
+        trigger: sdk.trigger.statusTrigger(60_000, {
+          starting: 5_000,
+          failure: 10_000,
+        }),
+        fn: async () => {
+          const res = await appSub.exec(['python', '-c', lndCheckPy], {
+            cwd: appDir,
+            user: 'root',
+          })
+          return res.exitCode === 0
+            ? { result: 'success', message: i18n('Connected to LND') }
+            : {
+                result: 'failure',
+                message: `${i18n('LND connection failed')}: ${res.stdout.toString().trim()}`,
+              }
+        },
+      },
+      requires: ['primary'],
     })
 })

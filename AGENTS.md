@@ -26,9 +26,13 @@ verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
-- **`SECURE_PROXY_SSL_HEADER` and `USE_X_FORWARDED_HOST` are load-bearing.** StartOS terminates TLS upstream, so without them Django's calculated origin differs from the browser's and **login POSTs 403 on a CSRF origin mismatch** — which presents as a rejected password, not as a proxy problem.
+- **`SECURE_PROXY_SSL_HEADER` is load-bearing.** StartOS terminates TLS upstream, so without it Django's calculated origin differs from the browser's and **login POSTs 403 on a CSRF origin mismatch** — which presents as a rejected password, not as a proxy problem.
+- **Don't set `USE_X_FORWARDED_HOST`.** StartOS never sends `X-Forwarded-Host` and does not strip a client's, so the setting lets any client choose the host Django checks the origin against.
 - **Don't build `ALLOWED_HOSTS` or `CSRF_TRUSTED_ORIGINS` from the interface's addresses.** Reading them with `.const()` restarts the service every time a gateway gains or loses an address.
-- **Omit `LND_RPC_SERVER` entirely when the address is unresolved.** Writing a placeholder that pretends to be LND hides the failure; leaving the bootstrap seed active makes the dial fail visibly and the `.const()` heals on unlock with one restart.
+- **Keep the daemon's shell wrapper and `runAsInit` together.** The controller has no SIGTERM handler, so alone as PID 1 it ignores the stop signal until the timeout; without `runAsInit` its children outlive it and a restart starts a second set beside them.
+- **Keep the `SECRET_KEY` override and the `check_password` guard in `ensure-superuser`.** Upstream's generator makes a new key every init, and an unconditional `set_password` re-salts the hash every start; either one ends every login session.
+- **Keep `os.makedirs` for `data/` in the overrides.** Upstream's logging writes there and the image has no such directory, so without it every `manage.py` command dies configuring logging.
+- **Omit `LND_RPC_SERVER` entirely when the address is unresolved.** Writing a placeholder that pretends to be LND hides the failure; the `.const()` re-runs `main` once LND publishes one.
 - **`gRPCHostId`/`gRPCPort` come from `lnd-startos/startos/interfaces`**, declared as a `github:` source dependency in `package.json` — don't reintroduce hardcoded `'grpc'`/`10009` literals.
 - **`bootstrapSettings` runs on every init kind, not just install.** The base file is tied to the image version, so a restore from an older backup onto a newer image would otherwise leave a stale base missing fields the new version expects. It calls `initialize.write_settings` directly via `python -c` to skip the script's `initialize_django` phase — migrate/collectstatic/createsuperuser against an ephemeral DB — because only the file is wanted.
 - **The admin password is deliberately not seeded.** Its absence in `store.json` is what raises the critical task; seeding a default would silently create an account with a known password.

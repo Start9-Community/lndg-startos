@@ -25,6 +25,10 @@
 
 LNDg's web UI is its only user-facing surface. After logging in you land on the node dashboard, with channel tables, forwarding analytics, the auto-rebalancer controls, and fee management tools available from the navigation. All day-to-day configuration — auto-rebalancer settings, fee policies, channel views — happens inside the web UI, not in StartOS.
 
+### Health checks
+
+LNDg's service page shows two: **Web Interface**, and **LND Connection**, which tells you whether LNDg can reach your LND node. If the dashboard is empty or shows errors, look at **LND Connection** first — its message is the reason LND gave.
+
 ### Actions
 
 - **Reset Admin Credentials** — generates a new random password for the `lndg-admin` Django superuser and reveals it. Use this if you've lost the password or want to rotate it. The next time the service starts, LNDg's Django superuser is re-synced to the new password automatically.
