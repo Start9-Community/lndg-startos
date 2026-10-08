@@ -21,7 +21,11 @@ export const resetAdminCredentials = sdk.Action.withoutInput(
       description: hasPass
         ? i18n('Reset your LNDg admin password')
         : i18n('Create your LNDg admin password'),
-      warning: null,
+      warning: hasPass
+        ? i18n(
+            'This replaces the current LNDg admin password, which stops working. If LNDg is running, it restarts.',
+          )
+        : null,
       allowedStatuses: 'any',
       group: null,
       visibility: 'enabled',

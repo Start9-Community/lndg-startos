@@ -67,7 +67,7 @@ One volume, plus a read-only view of LND's.
 | `base-settings.py` | Init                | Upstream's canonical Django settings       |
 | `store.json`       | Init and the action | The admin password and Django's secret key |
 
-**LND's channel database is mounted too**, not just its credentials — LNDg reads it directly for analytics that the RPC does not expose.
+**LNDg uses LND's channel database only for its file size**, which it shows on its dashboard; the dashboard leaves the size out when the file is missing.
 
 ## File Models
 
@@ -100,6 +100,8 @@ One, and it is required.
 | ---------- | -------- | ---------------------- | ------------------------------- | ------------------- |
 | LND        | Yes      | `lnd`                  | `main`, read-only at `/mnt/lnd` | The node it manages |
 
+Declared in `startos/dependencies.ts`: `kind: running`, version `>=0.21.1-beta:4`.
+
 **This package uses LND's admin macaroon.** LNDg opens and closes channels, sets fees, and rebalances — so access to this service is operational control of your node.
 
 LND creates its admin macaroon and publishes its gRPC binding only once its wallet has first been unlocked. **Until then LNDg cannot start:** it reads that macaroon as it starts, so its migration step fails with a `FileNotFoundError` naming `admin.macaroon`, and StartOS retries the step until the macaroon exists. After that LNDg does **not** restart on LND updates or on later lock and unlock cycles.
@@ -115,6 +117,8 @@ One interface.
 | Web UI    | `ui` | ui   | 8889 | The LNDg web interface |
 
 Bound on the `ui-multi` MultiHost over HTTP and not masked. LNDg's own Django login gates it.
+
+The `main` host the StartOS 0.3.5 package bound (Tor and LAN, onto 8889) is retired by the `1.11.1:1` migration: its bindings, port and any domain or `.onion` added to it are gone, and nothing is moved to `ui-multi`. A user who reached LNDg through that host adds an address to the Web UI interface.
 
 **Django accepts any `Host`**, which is upstream's default, so an address added or removed in StartOS takes effect without a restart. Logins pass the CSRF check on every address because the browser's origin is compared with the request's own host and forwarded scheme.
 
@@ -136,6 +140,7 @@ Generates the web login password and shows it once. Run it when its task appears
 
 - **What it changes:** the password in the store, and the admin account in the application's database on the next start.
 - **Cost:** the service restarts, since the account is reconciled by a start-up step rather than live.
+- **Confirmation:** when a password already exists the action asks for confirmation first, naming the password it replaces and the restart; the first run, which creates it, does not ask.
 - **Repeat safety:** each run generates a **new** password and invalidates the old one, along with every open login session.
 - **Outputs:** a fixed username and the new password.
 
@@ -176,8 +181,7 @@ A restored instance comes back with the same password and the same policies. **T
 2. **The live settings file is ephemeral** and regenerated each start; editing it inside the container does not survive.
 3. **The password can be reset but not chosen**, and resetting restarts the service.
 4. **Mainnet only.** The macaroon, channel database, and network are all pinned to Bitcoin mainnet.
-5. **LNDg reads LND's channel database directly**, so the two must be on the same server.
-6. **LNDg's log files are not kept.** They live in the container's own filesystem and start empty at every start, so LNDg's Logs page shows the current run only. The StartOS log keeps the history.
+5. **LNDg's log files are not kept.** They live in the container's own filesystem and start empty at every start, so LNDg's Logs page shows the current run only. The StartOS log keeps the history.
 
 ---
 

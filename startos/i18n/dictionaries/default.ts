@@ -24,6 +24,7 @@ const dict = {
   Success: 12,
   Username: 13,
   Password: 14,
+  'This replaces the current LNDg admin password, which stops working. If LNDg is running, it restarts.': 18,
 } as const
 
 /**

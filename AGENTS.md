@@ -18,22 +18,23 @@ Freshly scaffolded? Work the
 guide page, not a file in this repo — read it, don't copy it in.
 
 Keep `README.md` (technical reference for an AI support or administering agent) and
-`instructions.md` (end-user docs) in sync with your changes.
+`instructions.md` (end-user docs) in sync with your changes. This file restates neither:
+whoever changes the package has both, so it carries only what they don't — repo mechanics,
+a change that looks right and is not, where the next thing gets added, a naming trap, a
+build or test invocation particular to this repo.
 
-**Bugs and feature requests are GitHub issues on this repo** — file them as you find them.
+**Fix a defect you spot rather than reporting it** — you have the package open and the
+context to be sure. File **a GitHub issue on this repo** only when the call isn't yours to
+make: you can't pin the cause down, two defensible fixes exist, or it's too large to ride on
+the work in hand. An open issue is a report, not a queue — implement one when you're asked
+to or when it's labelled `Approved`, then close it with `Closes #<n>`.
+
 Don't record work in the repo instead: no `TODO.md`, no `NOTES.md`, no `PLAN.md`. What you
 verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
-- **`SECURE_PROXY_SSL_HEADER` is load-bearing.** StartOS terminates TLS upstream, so without it Django's calculated origin differs from the browser's and **login POSTs 403 on a CSRF origin mismatch** — which presents as a rejected password, not as a proxy problem.
-- **Don't set `USE_X_FORWARDED_HOST`.** StartOS never sends `X-Forwarded-Host` and does not strip a client's, so the setting lets any client choose the host Django checks the origin against.
-- **Don't build `ALLOWED_HOSTS` or `CSRF_TRUSTED_ORIGINS` from the interface's addresses.** Reading them with `.const()` restarts the service every time a gateway gains or loses an address.
+- **Keep every line of the settings overrides block and the `check_password` guard in `ensure-superuser`.** Each looks removable and is not: without `SECURE_PROXY_SSL_HEADER` logins fail with a CSRF 403 that reads as a wrong password, without the `SECRET_KEY` override or with an unconditional `set_password` every login session ends, and without `os.makedirs` for `data/` every `manage.py` command dies configuring logging.
+- **Don't set `USE_X_FORWARDED_HOST`, and don't build `ALLOWED_HOSTS` or `CSRF_TRUSTED_ORIGINS` from the interface's addresses.** StartOS does not strip a client's `X-Forwarded-Host`, and a `.const()` read of the addresses restarts the service whenever a gateway gains or loses one.
 - **Keep the daemon's shell wrapper and `runAsInit` together.** The controller has no SIGTERM handler, so alone as PID 1 it ignores the stop signal until the timeout; without `runAsInit` its children outlive it and a restart starts a second set beside them.
-- **Keep the `SECRET_KEY` override and the `check_password` guard in `ensure-superuser`.** Upstream's generator makes a new key every init, and an unconditional `set_password` re-salts the hash every start; either one ends every login session.
-- **Keep `os.makedirs` for `data/` in the overrides.** Upstream's logging writes there and the image has no such directory, so without it every `manage.py` command dies configuring logging.
-- **Omit `LND_RPC_SERVER` entirely when the address is unresolved.** Writing a placeholder that pretends to be LND hides the failure; the `.const()` re-runs `main` once LND publishes one.
-- **`gRPCHostId`/`gRPCPort` come from `lnd-startos/startos/interfaces`**, declared as a `github:` source dependency in `package.json` — don't reintroduce hardcoded `'grpc'`/`10009` literals.
-- **`bootstrapSettings` runs on every init kind, not just install.** The base file is tied to the image version, so a restore from an older backup onto a newer image would otherwise leave a stale base missing fields the new version expects. It calls `initialize.write_settings` directly via `python -c` to skip the script's `initialize_django` phase — migrate/collectstatic/createsuperuser against an ephemeral DB — because only the file is wanted.
-- **The admin password is deliberately not seeded.** Its absence in `store.json` is what raises the critical task; seeding a default would silently create an account with a known password.
-- **LND's `channel.db` is mounted as well as its credentials**, because LNDg reads it directly for analytics the RPC does not expose.
+- **Import `gRPCHostId`/`gRPCPort` from `lnd-startos/startos/interfaces`** (a `github:` dependency in `package.json`); don't reintroduce `'grpc'`/`10009` literals.

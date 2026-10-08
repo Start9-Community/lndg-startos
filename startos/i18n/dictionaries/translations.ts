@@ -20,6 +20,7 @@ export default {
     15: 'Conexión con LND',
     16: 'Conectado a LND',
     17: 'Falló la conexión con LND',
+    18: 'Esto reemplaza la contraseña de administrador actual de LNDg, que deja de funcionar. Si LNDg está en ejecución, se reinicia.',
   } satisfies LangDict,
   de_DE: {
     0: 'LNDg wird gestartet...',
@@ -40,6 +41,7 @@ export default {
     15: 'LND-Verbindung',
     16: 'Mit LND verbunden',
     17: 'LND-Verbindung fehlgeschlagen',
+    18: 'Dadurch wird das aktuelle Admin-Passwort von LNDg ersetzt und funktioniert nicht mehr. Läuft LNDg, startet es neu.',
   } satisfies LangDict,
   pl_PL: {
     0: 'Uruchamianie LNDg...',
@@ -60,6 +62,7 @@ export default {
     15: 'Połączenie z LND',
     16: 'Połączono z LND',
     17: 'Połączenie z LND nie powiodło się',
+    18: 'Spowoduje to zastąpienie obecnego hasła administratora LNDg, które przestanie działać. Jeśli LNDg działa, zostanie uruchomiony ponownie.',
   } satisfies LangDict,
   fr_FR: {
     0: 'Démarrage de LNDg...',
@@ -80,5 +83,6 @@ export default {
     15: 'Connexion à LND',
     16: 'Connecté à LND',
     17: 'Échec de la connexion à LND',
+    18: "Cela remplace le mot de passe administrateur actuel de LNDg, qui cesse de fonctionner. Si LNDg est en cours d'exécution, il redémarre.",
   } satisfies LangDict,
 } as Record<string, LangDict>
