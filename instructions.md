@@ -31,4 +31,4 @@ LNDg's service page shows two: **Web Interface**, and **LND Connection**, which 
 
 ### Actions
 
-- **Reset Admin Credentials** — generates a new random password for the `lndg-admin` Django superuser and reveals it. Use this if you've lost the password or want to rotate it. The next time the service starts, LNDg's Django superuser is re-synced to the new password automatically.
+- **Reset Admin Credentials** — generates a new random password for the `lndg-admin` Django superuser and reveals it. Use this if you've lost the password or want to rotate it. When a password already exists, StartOS asks you to confirm first: the old password stops working and, if LNDg is running, it restarts. The next time the service starts, LNDg's Django superuser is re-synced to the new password automatically.
