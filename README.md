@@ -35,11 +35,11 @@
 
 ## Image and Container Runtime
 
-One upstream image, consumed unmodified.
+One upstream image. The root `Dockerfile` upgrades its certifi, a temporary layer that comes out once upstream ships an image built on a fixed certifi.
 
 | Property      | Value                                                                  |
 | ------------- | ---------------------------------------------------------------------- |
-| Image         | `ghcr.io/cryptosharks131/lndg`                                         |
+| Image         | `ghcr.io/cryptosharks131/lndg` + root `Dockerfile`                     |
 | Architectures | x86_64, aarch64                                                        |
 | Command       | The application's controller, under a shell wrapper that runs as PID 1 |
 
@@ -189,7 +189,7 @@ A restored instance comes back with the same password and the same policies. **T
 
 ```yaml
 package_id: lndg
-image: ghcr.io/cryptosharks131/lndg
+image: ghcr.io/cryptosharks131/lndg + root Dockerfile (certifi upgrade)
 architectures:
   - x86_64
   - aarch64

@@ -13,7 +13,11 @@ export const manifest = setupManifest({
   volumes: ['main'],
   images: {
     lndg: {
-      source: { dockerTag: 'ghcr.io/cryptosharks131/lndg:v1.11.1' },
+      source: {
+        dockerBuild: {
+          buildArgs: { IMAGE: 'ghcr.io/cryptosharks131/lndg:v1.11.1' },
+        },
+      },
       arch: ['x86_64', 'aarch64'],
       emulateMissing: false,
     },
