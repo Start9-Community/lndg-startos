@@ -1,6 +1,6 @@
 # Updating the upstream version
 
-LNDg ships from a single source: the upstream-published `ghcr.io/cryptosharks131/lndg` container image, tagged `v<version>` to match the GitHub release. The root `Dockerfile` layers a certifi upgrade on it.
+LNDg ships from a single source: the upstream-published `ghcr.io/cryptosharks131/lndg` container image, tagged `v<version>` to match the GitHub release. The root `Dockerfile` layers a certifi upgrade on it and applies the patches in `patches/`.
 
 ## Determining the upstream version
 
@@ -17,3 +17,6 @@ LNDg ships from a single source: the upstream-published `ghcr.io/cryptosharks131
 - **`startos/manifest/index.ts`** — set `images.lndg.source.dockerBuild.buildArgs.IMAGE` to `ghcr.io/cryptosharks131/lndg:v<new version>`.
 - **`initialize.py` upstream** — the package calls `write_settings` directly (`startos/init/bootstrapSettings.ts`) and appends to the settings it generates (`composeOverrides` in `startos/utils.ts`). Diff the file between the two versions: a changed signature fails every init, and a setting that assumes upstream's Docker layout, such as a path under `data/`, needs an answer in the overrides.
 - **`controller.py` upstream** — the daemon command wraps it. Check it still takes `runserver <address>` and still has no SIGTERM handler of its own.
+- **Carried patches** — re-validate everything in `patches/` against the new tag:
+  - Check each patch's **Retire when** condition in [patches/README.md](patches/README.md). A patch upstream has absorbed is deleted, along with its README section — not re-applied.
+  - The Dockerfile applies what remains with `patch -p1 --fuzz=0`, so a patch whose context the bump changed fails the build. That failure is the gate working: re-derive the patch against the new tag (or retire it) — never loosen `--fuzz`.

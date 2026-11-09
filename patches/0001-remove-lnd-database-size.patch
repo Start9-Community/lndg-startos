@@ -1,0 +1,43 @@
+diff --git a/gui/templates/home.html b/gui/templates/home.html
+--- a/gui/templates/home.html
++++ b/gui/templates/home.html
+@@ -36,7 +36,6 @@
+     <span style="padding:1.5px 8px;" class="w3-round w3-border w3-border-grey">Public Capacity: <span id="public_capacity">0</span></span>
+     <span style="padding:1.5px 8px;" class="w3-round w3-border w3-border-grey">Active Channels: <span id="public_channels_count">0</span> / <span id="total_channels">0</span></span>
+     <span id="peers" style="padding:1.5px 8px;" class="w3-round w3-border w3-border-grey">0</span>
+-    <span id="dbSize" style="padding:1.5px 8px;" class="w3-round w3-border w3-border-grey">---</span>
+     <span style="padding:1.5px 8px;" class="w3-round w3-border w3-border-grey">Total States Updates: <span id="updates">---</span></span>
+     <span style="padding:1.5px 8px;margin-left:4px" class="w3-round w3-border w3-border-grey"><a href="#sign">Sign a message</a></span>
+   </h6>
+@@ -947,7 +946,6 @@
+     byId('public_channels_count').innerHTML = node_info.num_active_channels
+     byId('total_channels').innerHTML = node_info.num_active_channels + node_info.num_inactive_channels
+     byId('peers').innerHTML = `<a href="/peers" target="_blank">Peers</a>: ${node_info.num_peers}`
+-    if(node_info.db_size > 0) byId('dbSize').innerHTML = `DB Size: ${node_info.db_size} GB`
+ 
+     byId('total_balance').innerHTML = node_info.balance.total.intcomma()
+     byId('onChain').innerHTML = `Onchain: ${node_info.balance.onchain.intcomma()}`
+diff --git a/gui/views.py b/gui/views.py
+--- a/gui/views.py
++++ b/gui/views.py
+@@ -2908,10 +2908,6 @@
+             pending_item.update(pending_channel_details(target_resp[i].channel.channel_point))
+             waiting_for_close.append(pending_item)
+     limbo_balance -= pending_closing_balance
+-    try:
+-        db_size = get_channeldb_file_size()
+-    except:
+-        db_size = 0
+     return Response({
+         'version': node_info.version,
+         'num_peers': node_info.num_peers,
+@@ -2931,8 +2927,7 @@
+         'pending_open': pending_open,
+         'pending_closed': pending_closed,
+         'pending_force_closed': pending_force_closed,
+-        'waiting_for_close': waiting_for_close,
+-        'db_size': db_size
++        'waiting_for_close': waiting_for_close
+     })
+ 
+ @api_view(['POST'])

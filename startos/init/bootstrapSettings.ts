@@ -40,8 +40,8 @@ from initialize import write_settings
 write_settings(
     node_ip='*',
     lnd_tls_path='${lndMount}/tls.cert',
-    lnd_macaroon_path='${lndMount}/data/chain/bitcoin/mainnet/admin.macaroon',
-    lnd_database_path='${lndMount}/data/graph/mainnet/channel.db',
+    lnd_macaroon_path='${lndMount}/admin.macaroon',
+    lnd_database_path='',
     lnd_network='mainnet',
     lnd_rpc_server='${lndRpcPlaceholder}',
     lnd_max_message='35',
