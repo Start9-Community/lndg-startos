@@ -3,9 +3,7 @@ export const uiPort = 8889
 // Path inside the subcontainer where the upstream lndg repo lives (WORKDIR of the image)
 export const appDir = '/app' as const
 
-// Path inside the subcontainer where LND's volume is mounted (read-only).
-// Upstream `initialize.py --lnddir <path>` derives tls.cert, admin.macaroon,
-// and channel.db paths from this.
+// Where LND's `public` volume `admin/` tier (admin.macaroon + tls.cert) is mounted, read-only.
 export const lndMount = '/mnt/lnd' as const
 
 // Path inside the subcontainer where the service's own `main` volume is mounted.

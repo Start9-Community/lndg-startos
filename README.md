@@ -35,7 +35,7 @@
 
 ## Image and Container Runtime
 
-One upstream image. The root `Dockerfile` upgrades its certifi, a temporary layer that comes out once upstream ships an image built on a fixed certifi.
+One upstream image. The root `Dockerfile` upgrades its certifi, a temporary layer that comes out once upstream ships an image built on a fixed certifi, and applies the patches in `patches/` to the app; `patches/README.md` lists each and what retires it.
 
 | Property      | Value                                                                  |
 | ------------- | ---------------------------------------------------------------------- |
@@ -56,10 +56,10 @@ The controller is upstream's own supervisor: it runs the web server and four bac
 
 One volume, plus a read-only view of LND's.
 
-| Volume            | Mount Point | Purpose                                           |
-| ----------------- | ----------- | ------------------------------------------------- |
-| `main`            | `/data`     | The database, the base settings, the store        |
-| LND's `main` (ro) | `/mnt/lnd`  | LND's certificate, macaroon, and channel database |
+| Volume                       | Mount Point | Purpose                                             |
+| ---------------------------- | ----------- | --------------------------------------------------- |
+| `main`                       | `/data`     | The database, the base settings, the store          |
+| LND's `public` `admin/` (ro) | `/mnt/lnd`  | LND's `tls.cert` and `admin.macaroon`, nothing else |
 
 | Path               | Written by          | Holds                                      |
 | ------------------ | ------------------- | ------------------------------------------ |
@@ -96,11 +96,11 @@ What the overrides do, and why:
 
 One, and it is required.
 
-| Dependency | Required | Health checks required | Mounted                         | Why                 |
-| ---------- | -------- | ---------------------- | ------------------------------- | ------------------- |
-| LND        | Yes      | `lnd`                  | `main`, read-only at `/mnt/lnd` | The node it manages |
+| Dependency | Required | Health checks required | Mounted                                         | Why                 |
+| ---------- | -------- | ---------------------- | ----------------------------------------------- | ------------------- |
+| LND        | Yes      | `lnd`                  | `public` tier `admin/`, read-only at `/mnt/lnd` | The node it manages |
 
-Declared in `startos/dependencies.ts`: `kind: running`, version `>=0.21.1-beta:4`.
+Declared in `startos/dependencies.ts`: `kind: running`, version `>=0.21.6-beta:3`.
 
 **This package uses LND's admin macaroon.** LNDg opens and closes channels, sets fees, and rebalances — so access to this service is operational control of your node.
 
@@ -180,8 +180,9 @@ A restored instance comes back with the same password and the same policies. **T
 1. **The admin macaroon is required**, so access to this service is operational control of the node.
 2. **The live settings file is ephemeral** and regenerated each start; editing it inside the container does not survive.
 3. **The password can be reset but not chosen**, and resetting restarts the service.
-4. **Mainnet only.** The macaroon, channel database, and network are all pinned to Bitcoin mainnet.
+4. **Mainnet only.** LND's network is pinned to Bitcoin mainnet.
 5. **LNDg's log files are not kept.** They live in the container's own filesystem and start empty at every start, so LNDg's Logs page shows the current run only. The StartOS log keeps the history.
+6. **No LND database size.** Upstream's home-page "DB Size" measures `channel.db`, which LND's SQLite backend does not use; `patches/0001` removes it.
 
 ---
 
@@ -189,7 +190,7 @@ A restored instance comes back with the same password and the same policies. **T
 
 ```yaml
 package_id: lndg
-image: ghcr.io/cryptosharks131/lndg + root Dockerfile (certifi upgrade)
+image: ghcr.io/cryptosharks131/lndg + root Dockerfile (certifi upgrade, patches/)
 architectures:
   - x86_64
   - aarch64
@@ -197,14 +198,14 @@ subcontainers:
   - lndg-main # three oneshots and the daemon
   - lndg-bootstrap-settings # temporary, init only
 volumes:
-  main: /data # LND's main volume is mounted read-only at /mnt/lnd
+  main: /data # LND's public volume, admin/ tier, is mounted read-only at /mnt/lnd
 file_models:
   - base-settings.py # upstream's canonical settings, rewritten every init
   - store.json # the admin password and Django's secret key
   # the live settings.py is composed at each start into the container, not persisted
 startos_managed_env_vars: [] # settings are composed into settings.py
 dependencies:
-  - lnd # required, kind: running, admin macaroon + channel.db via a read-only mount
+  - lnd # required, kind: running, admin macaroon + tls.cert via a read-only mount
 interfaces:
   ui: { type: ui, port: 8889 }
 actions:
